@@ -882,7 +882,7 @@ class IBD:
 
         return within, outside
 
-    def plot_coverage(self, ax=None):
+    def plot_coverage(self, ax=None, plot_proportions=True):
         assert self._cov_df is not None
 
         if ax is None:
@@ -907,10 +907,11 @@ class IBD:
             ax.axvline(x, linestyle="--", color="grey")
 
         # mark IBD proportions
-        ax_twin = ax.twinx()
-        ylim = ax.get_ylim()
-        ax_twin.set_ylim(ylim[0] / n_pairs, ylim[1] / n_pairs)
-        ax_twin.set_ylabel("IBD proportions")
+        if plot_proportions:
+            ax_twin = ax.twinx()
+            ylim = ax.get_ylim()
+            ax_twin.set_ylim(ylim[0] / n_pairs, ylim[1] / n_pairs)
+            ax_twin.set_ylabel("IBD proportions")
 
         return ax
 
