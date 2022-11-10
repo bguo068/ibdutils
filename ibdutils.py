@@ -882,7 +882,7 @@ class IBD:
 
         return within, outside
 
-    def plot_coverage(self, ax=None, plot_proportions=True):
+    def plot_coverage(self, ax=None, label='', plot_proportions=True):
         assert self._cov_df is not None
 
         if ax is None:
@@ -897,7 +897,7 @@ class IBD:
 
         # plot coverage
         cov_df = self._cov_df[lambda df: df.Coverage > 0]  # omit zeros
-        ax.plot("GwStart", "Coverage", data=cov_df)
+        ax.plot("GwStart", "Coverage", data=cov_df, label=label)
         ax.set_xticks(chr_centers)
         ax.set_xticklabels(chr_names)
         ax.set_ylabel("IBD coverage")
@@ -912,6 +912,10 @@ class IBD:
             ylim = ax.get_ylim()
             ax_twin.set_ylim(ylim[0] / n_pairs, ylim[1] / n_pairs)
             ax_twin.set_ylabel("IBD proportions")
+
+        # allow show label in legend
+        if label != '':
+            ax.legend()
 
         return ax
 
