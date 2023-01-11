@@ -258,14 +258,14 @@ class Genome:
     def get_chromosome_gw_center(self):
         return self._chr_df.GwChromCenter.values
 
-    def get_drg_gw_center(self):
-        drg = self._drg_df.loc[lambda df: df.Comment == "drg"]
+    def get_drg_gw_center(self, types=["drg", "sex"]):
+        drg = self._drg_df.loc[lambda df: df.Comment.isin(types)]
         chromosome = drg.Chromosome.values
         centers = (drg.End + drg.Start) / 2.0
         return self.get_genome_wide_coords(chromosome, centers)
 
-    def get_drg_labels(self):
-        return self._drg_df[lambda df: df.Comment == "drg"]["Name"].values
+    def get_drg_labels(self, types=["drg", "sex"]):
+        return self._drg_df[lambda df: df.Comment.isin(types)]["Name"].values
 
     @staticmethod
     def _get_pf3d7_chrlen_lst():
@@ -286,17 +286,19 @@ PF3D7_0417200    dhfr           4           748088   749914   drg
 PF3D7_0523000    mdr1           5           957890   962149   drg
 PF3D7_0629500    aat1           6           1213102  1217313  drg
 PF3D7_0709000    crt            7           403222   406317   drg
-PF3D7_0720700    PF3D7_0720700  7           891683   899051   drg
+PF3D7_0720700    pib7           7           891683   899051   drg
 PF3D7_0731500    eba175         7           1358055  1362929  not_drg
 PF3D7_0810800    dhps           8           548200   550616   drg
 PF3D7_0930300    msp1           9           1201812  1206974  not_drg
 PF3D7_1012700    pph            10          487252   491828   drg
 PF3D7_1036300    mspdbl2        10          1432498  1434786  drg
 PF3D7_1224000    gch1           12          974372   975541   drg
+PF3D7_1222600    ap2-g*         12          907203   914501   sex
 PF3D7_1318100    fd             13          748387   748971   drg
 PF3D7_1322700    PF3D7_1322700  13          958219   959175   drg
 PF3D7_1343700    k13            13          1724817  1726997  drg
 PF3D7_1335900    trap           13          2005962  2007950  not_drg
+PF3D7_1408200    ap2-g2*        14          300725   305833   sex
 PF3D7_1451200    PF3D7_1451200  14          2094340  2099736  drg
 PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
 
@@ -463,7 +465,9 @@ class VCF:
             .Orig
         )
 
-        self.calldata = allel.read_vcf(self.vcf_fn, alt_number=alt_number, samples=sel_samples)
+        self.calldata = allel.read_vcf(
+            self.vcf_fn, alt_number=alt_number, samples=sel_samples
+        )
         # convert chromosome names to integer
         self.calldata["variants/CHROM"] = (
             pd.Series(self.calldata["variants/CHROM"])
@@ -670,7 +674,7 @@ class IBD:
 
         self._df = ibd
 
-    def convert_to_heterozygous_diploids(self, remove_hbd=True, sep='@'):
+    def convert_to_heterozygous_diploids(self, remove_hbd=True, sep="@"):
         """
         Note: need to use a different separator that was used for remove_peaks
         and other steps that concatenate fields using the separator ':'
@@ -771,7 +775,7 @@ class IBD:
         else:
             raise Exception(f"Method {method} not implemented")
 
-    def filter_ibd_by_time(self, max_tmrca: float, min_tmrca: float = None):
+    def filter_ibd_by_time(self, max_tmrca: float = None, min_tmrca: float = None):
         assert "Tmrca" in self._df.columns
         if max_tmrca:
             self._df = self._df[lambda df: df.Tmrca < max_tmrca]
@@ -882,7 +886,7 @@ class IBD:
 
         return within, outside
 
-    def plot_coverage(self, ax=None, label='', plot_proportions=True):
+    def plot_coverage(self, ax=None, label="", plot_proportions=True):
         assert self._cov_df is not None
 
         if ax is None:
@@ -914,7 +918,7 @@ class IBD:
             ax_twin.set_ylabel("IBD proportions")
 
         # allow show label in legend
-        if label != '':
+        if label != "":
             ax.legend()
 
         return ax
@@ -1980,11 +1984,11 @@ class IbdNeRunner:
         # add Hap1, Hap2, cM columns
         self.ibd._df["Hap1"] = 0
         self.ibd._df["Hap2"] = 0
-        
+
         # TODO: in the cut_and_split_ibd method, the genome is not updated;
         # use constant rate to get around this for now.
         # self.ibd._df["Cm"] = self.ibd.calc_ibd_length_in_cm()
-        self.ibd._df["Cm"] = (self.ibd._df['End'] - self.ibd._df['Start'] ) / bp_per_cm
+        self.ibd._df["Cm"] = (self.ibd._df["End"] - self.ibd._df["Start"]) / bp_per_cm
 
         # write xx.ibd.gz file
         col_order = ["Id1", "Hap1", "Id2", "Hap2", "Chromosome", "Start", "End", "Cm"]
@@ -2018,13 +2022,15 @@ class IbdNeRunner:
         with open(self.ibdne_jar_fn, "wb") as f:
             f.write(response.content)
 
-    def run(self, nthreads=24, mem_gb:int=20, dry_run=False):
+    def run(self, nthreads=24, mem_gb: int = 20, dry_run=False):
         # make sure files are present
-        if (not Path(self.input_map_fn).exists()) or (not Path(self.input_ibd_fn).exists()):
+        if (not Path(self.input_map_fn).exists()) or (
+            not Path(self.input_ibd_fn).exists()
+        ):
             self.prepare_ibdne_input()
 
         output_prefix = self.ouptut_ne_fn.replace(".ne", "")
-        output_script= self.ouptut_ne_fn.replace(".ne", ".sh")
+        output_script = self.ouptut_ne_fn.replace(".ne", ".sh")
 
         # make sure jar file is present
         if not Path(self.ibdne_jar_fn).exists():
@@ -2040,7 +2046,7 @@ class IbdNeRunner:
                     minregion={self.minregion} \\
                     mincm={self.mincm}
         """
-        with open(output_script, 'w') as f:
+        with open(output_script, "w") as f:
             f.write(cmd)
 
         if not dry_run:
