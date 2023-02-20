@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ibdutils"
+version = "0.0.1"
+authors = [
+  { name="Bing Guo", email="bguo068@icloud.com" },
+]
+description = "For IBD processing and analyses"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+  'numpy',
+  'pandas',
+  'scipy',
+  'pybedtools',
+  'matplotlib',
+  'requests',
+  'msprime',
+  'tskit',
+  'allel',
+  'igraph',
+  'scikit-learn',
+  "HapNe @ git+ssh://git@github.com/bguo068/HapNe",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/bguo068/ibdutils"
+"Bug Tracker" = "https://github.com/bguo068/ibdutils/issues"

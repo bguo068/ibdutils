@@ -3,33 +3,18 @@
 import io
 import random
 import re
-import xml.etree.ElementTree as ET
-from configparser import ConfigParser
-from pathlib import Path
 from typing import List, Tuple, Union
-import requests
-from subprocess import run
 
 import allel
-import Bio.Phylo.BaseTree
-import hapne
-import hapne.utils
 import igraph
 import numpy as np
 import pandas as pd
 import pybedtools as pb
 import scipy.cluster.hierarchy as sch
-from Bio import Phylo
-from matplotlib import scale as mscale
-from matplotlib import transforms as mtransforms
-from matplotlib.ticker import FixedLocator, FuncFormatter
 from sklearn.cluster import AgglomerativeClustering
 import matplotlib.pyplot as plt
 
 import numpy as np
-from matplotlib import scale as mscale
-from matplotlib import transforms as mtransforms
-from matplotlib.ticker import FixedLocator, FuncFormatter
 
 
 class GeneticMap:
@@ -1397,13 +1382,13 @@ class SnpEffResHandler:
     @staticmethod
     def get_common_mutations():
         # TODO: need to update this list
-        return """dhfr:I164L 
-        mdr1:Y184F 
+        return """dhfr:I164L
+        mdr1:Y184F
         aat1:Q454E aat1:S258L
         crt:M74I crt:N75D crt:N326S crt:I356T
         PF3D7_0720700:C1484F
         dhps:G437A dhps:A581G
-        fd:D193Y 
+        fd:D193Y
         k13:C580Y k13:R539T k13:Y493H
         arps10:V127M
         """.split()
