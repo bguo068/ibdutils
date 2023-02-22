@@ -1288,7 +1288,7 @@ class IBD:
         """
         @transform: in ["square", "cube", None]
         """
-        names = M.index.to_series()
+        names = M.index.to_list()
         assert (M.index == M.columns).all()
 
         M1 = M.copy()
