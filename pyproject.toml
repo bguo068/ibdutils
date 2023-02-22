@@ -20,10 +20,10 @@ dependencies = [
   'requests',
   'msprime',
   'tskit',
-  'allel',
   'igraph',
   'scikit-learn',
-  "HapNe @ git+ssh://git@github.com/bguo068/HapNe",
+  'scikit-allel',
+  #"HapNe @ git+ssh://git@github.com/bguo068/HapNe",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
