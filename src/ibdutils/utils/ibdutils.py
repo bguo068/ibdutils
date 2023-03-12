@@ -914,7 +914,7 @@ class IBD:
     @staticmethod
     def _find_peaks(cov_df: pd.DataFrame, chr_df):
         """find peaks in IBD coverage profile using bedtools/pybedtools where peaks
-        are defined by regions > chromosome median + 1.5 IQR with extension to
+        are defined by regions > chromosome Q3 + 1.5 IQR with extension to
         nearest point crossing the median line"""
         peaks_lst = []
         stats = {"Chromosome": [], "Median": [], "Thres": []}
@@ -924,18 +924,18 @@ class IBD:
             assert np.all((s[1:-1] - s[:-2]) == (s[1:-1] - s[:-2]).mean())
             step = s[1] - s[0]
             # threshold
-            q5, q25, q50, q75, q95 = np.quantile(
-                chrom_cov_df.Coverage, q=[0.05, 0.25, 0.5, 0.75, 0.95]
+            q25, q50, q75 = np.quantile(
+                chrom_cov_df.Coverage, q=[0.25, 0.5, 0.75]
             )
             iqr = q75 - q25
-            trim_mean = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].mean()
-            trim_std = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].std()
+            # trim_mean = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].mean()
+            # trim_std = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].std()
             # core regions
             core_df = chrom_cov_df.loc[
                 lambda x: (
-                    # x.Coverage > q75 + 1.5 * iqr
-                    x.Coverage
-                    > trim_mean + 2 * trim_std
+                    x.Coverage > q75 + 1.5 * iqr
+                    # x.Coverage
+                    # > trim_mean + 2 * trim_std
                 )
             ]
             core_bed = pb.BedTool.from_dataframe(core_df.iloc[:, :3]).merge(d=step)
@@ -946,11 +946,11 @@ class IBD:
             peaks = ext_bed.intersect(core_bed, wa=True).merge(d=step).to_dataframe()
             if peaks.shape[0] > 0:
                 peaks["Median"] = q50
-                peaks["Thres"] = q50 + iqr
+                peaks["Thres"] = q75 + 1.5 * iqr
             peaks_lst.append(peaks)
             stats["Chromosome"].append(chromosome)
             stats["Median"].append(q50)
-            stats["Thres"].append(q50 + 1.5 * iqr)
+            stats["Thres"].append(q75 + 1.5 * iqr)
         peaks_df = pd.concat(peaks_lst)
         if peaks_df.shape[0] > 0:
             peaks_df.columns = ["Chromosome", "Start", "End", "Median", "Thres"]
