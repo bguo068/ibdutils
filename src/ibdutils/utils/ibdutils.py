@@ -3,6 +3,10 @@
 import io
 import random
 import re
+import pickle
+import gzip
+from pathlib import Path
+from copy import deepcopy
 from typing import List, Tuple, Union
 
 import allel
@@ -924,16 +928,15 @@ class IBD:
             assert np.all((s[1:-1] - s[:-2]) == (s[1:-1] - s[:-2]).mean())
             step = s[1] - s[0]
             # threshold
-            q25, q50, q75 = np.quantile(
-                chrom_cov_df.Coverage, q=[0.25, 0.5, 0.75]
-            )
+            q25, q50, q75 = np.quantile(chrom_cov_df.Coverage, q=[0.25, 0.5, 0.75])
             iqr = q75 - q25
             # trim_mean = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].mean()
             # trim_std = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].std()
             # core regions
             core_df = chrom_cov_df.loc[
                 lambda x: (
-                    x.Coverage > q75 + 1.5 * iqr
+                    x.Coverage
+                    > q75 + 1.5 * iqr
                     # x.Coverage
                     # > trim_mean + 2 * trim_std
                 )
@@ -1354,8 +1357,18 @@ class IBD:
     def is_valid() -> bool:
         raise NotImplemented
 
-    def pickle(self):
-        raise NotImplemented
+    def pickle_dump(self, out_fn: str):
+        # make sure parent folder exist
+        Path(out_fn).parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(out_fn, "wb") as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def pickle_load(in_fn) -> "IBD":
+        assert Path(in_fn).exists()
+        with gzip.open(in_fn, "rb") as f:
+            self: IBD = pickle.load(f)
+        return self
 
     def get_samples_shared_ibd(self) -> np.ndarray:
         s1 = self._df.Id1.unique()
