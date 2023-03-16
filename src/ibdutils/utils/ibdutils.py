@@ -1340,14 +1340,14 @@ class IBD:
     def duplicate(self, new_label="") -> "IBD":
         """Duplicate the whole IBD object"""
         new_ibd = IBD()
-        new_ibd._df = self._df.copy()
-        new_ibd._ibd_format = self._ibd_format
-        new_ibd._genome = self._genome
-        new_ibd._supported_ibd_formats = self._supported_ibd_formats
-        new_ibd._label = new_label
-        new_ibd._cov_df = self._cov_df
-        new_ibd._samples = self._samples
-        new_ibd._peaks_df = self._peaks_df
+        new_ibd._df = deepcopy(self._df)
+        new_ibd._ibd_format = deepcopy(self._ibd_format)
+        new_ibd._genome = deepcopy(self._genome)
+        new_ibd._supported_ibd_formats = deepcopy(self._supported_ibd_formats)
+        new_ibd._label = deepcopy(new_label)
+        new_ibd._cov_df = deepcopy(self._cov_df)
+        new_ibd._samples = deepcopy(self._samples)
+        new_ibd._peaks_df = deepcopy(self._peaks_df)
 
         return new_ibd
 
