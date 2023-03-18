@@ -974,8 +974,23 @@ class IBD:
         cov_df_4col = self._cov_df[["Chromosome", "Start", "End", "Coverage"]]
         self._peaks_df, _ = IBD._find_peaks(cov_df_4col, chr_df)
 
+    def extract_intervals(self, intervals_df: pd.DataFrame, min_seg_cm=2.0,
+                          rm_short_seg=False):
+        """
+        update IBD's ibd segment dataframe and only keep parts of segments
+        located within the intervals. If `rm_short_seg` is True,
+        remove segments if the length is shorter than `min_seg_cm`
+        """
+        assert self._genome is not None
+        ibd = IBD._extract_intervals(self._df, intervals_df)
+        cm = self._genome._gmap.get_length_in_cm(ibd.Chromosome, ibd.Start, ibd.End)
+        if rm_short_seg:
+            ibd = ibd[cm >= min_seg_cm]
+
+        self._df = ibd.copy()
+
     @staticmethod
-    def _remove_peaks(ibd_in: pd.DataFrame, peaks_df):
+    def _extract_intervals(ibd_in: pd.DataFrame, intervals_df):
         ibd = ibd_in.copy()
 
         # backup datatype
@@ -995,31 +1010,72 @@ class IBD:
             )
         )
         # only the first 3 columns are needed
-        peaks_bed = pb.BedTool.from_dataframe(peaks_df.iloc[:, range(3)])
+        intervals_bed = pb.BedTool.from_dataframe(intervals_df.iloc[:, range(3)])
 
         # TODO: parallelize per chromosome
-        ibd_rm_peaks = ibd_bed.subtract(peaks_bed).to_dataframe()
-        ibd_rm_peaks.columns = ["Chromosome", "Start", "End", "Name", "Score", "Strand"]
-        ibd_rm_peaks[["Id1", "Id2"]] = (
-            ibd_rm_peaks["Name"].str.split(":", expand=True).iloc[:, :2]
+        ibd_extract = ibd_bed.intersect(intervals_bed, sorted=True).to_dataframe()
+        ibd_extract.columns = ["Chromosome", "Start", "End", "Name", "Score", "Strand"]
+        ibd_extract[["Id1", "Id2"]] = (
+            ibd_extract["Name"].str.split(":", expand=True).iloc[:, :2]
         )
-        ibd_rm_peaks = ibd_rm_peaks[["Id1", "Id2", "Chromosome", "Start", "End"]]
+        ibd_extract = ibd_extract[["Id1", "Id2", "Chromosome", "Start", "End"]]
 
         # resume datatypes
-        ibd_rm_peaks["Id1"] = ibd_rm_peaks["Id1"].astype(id1_dtype)
-        ibd_rm_peaks["Id2"] = ibd_rm_peaks["Id2"].astype(id2_dytpe)
-        ibd_rm_peaks["Chromosome"] = ibd_rm_peaks["Chromosome"].astype(chr_dtype)
+        ibd_extract["Id1"] = ibd_extract["Id1"].astype(id1_dtype)
+        ibd_extract["Id2"] = ibd_extract["Id2"].astype(id2_dytpe)
+        ibd_extract["Chromosome"] = ibd_extract["Chromosome"].astype(chr_dtype)
 
         # filter short segment after removing
         # too_short = ibd_rm_peaks.End - ibd_rm_peaks.Start < 2 * bp_per_cm
         # ibd_rm_peaks = ibd_rm_peaks[~too_short].copy()
-        return ibd_rm_peaks
+        return ibd_extract
+
+    @staticmethod
+    def _remove_intervals(ibd_in: pd.DataFrame, intervals_df):
+        ibd = ibd_in.copy()
+
+        # backup datatype
+        id1_dtype = ibd["Id1"].dtype
+        id2_dytpe = ibd["Id2"].dtype
+        chr_dtype = ibd["Chromosome"].dtype
+
+        ibd["Info"] = ibd.Id1.astype(str).str.cat(
+            ibd[["Id2", "Chromosome"]].astype(str), sep=":"
+        )
+        ibd["Score"] = 1
+        ibd["Strand"] = "*"
+        ibd["ChromStr"] = ibd.Chromosome.astype(str)
+        ibd_bed = pb.BedTool.from_dataframe(
+            ibd[["ChromStr", "Start", "End", "Info", "Score", "Strand"]].sort_values(
+                by=["ChromStr", "Start"], axis=0
+            )
+        )
+        # only the first 3 columns are needed
+        intervals_bed = pb.BedTool.from_dataframe(intervals_df.iloc[:, range(3)])
+
+        # TODO: parallelize per chromosome
+        ibd_subtract = ibd_bed.subtract(intervals_bed).to_dataframe()
+        ibd_subtract.columns = ["Chromosome", "Start", "End", "Name", "Score", "Strand"]
+        ibd_subtract[["Id1", "Id2"]] = (
+            ibd_subtract["Name"].str.split(":", expand=True).iloc[:, :2]
+        )
+        ibd_subtract = ibd_subtract[["Id1", "Id2", "Chromosome", "Start", "End"]]
+
+        # resume datatypes
+        ibd_subtract["Id1"] = ibd_subtract["Id1"].astype(id1_dtype)
+        ibd_subtract["Id2"] = ibd_subtract["Id2"].astype(id2_dytpe)
+        ibd_subtract["Chromosome"] = ibd_subtract["Chromosome"].astype(chr_dtype)
+
+        # filter short segment after removing
+        # too_short = ibd_rm_peaks.End - ibd_rm_peaks.Start < 2 * bp_per_cm
+        # ibd_rm_peaks = ibd_rm_peaks[~too_short].copy()
+        return ibd_subtract
 
     def remove_peaks(self, min_seg_cm: float = 2.0, rm_short_seg=True):
         assert self._peaks_df is not None
         assert self._genome is not None
 
-        ibd = self._remove_peaks(self._df, self._peaks_df)
+        ibd = self._remove_intervals(self._df, self._peaks_df)
         cm = self._genome._gmap.get_length_in_cm(ibd.Chromosome, ibd.Start, ibd.End)
         if rm_short_seg:
             ibd = ibd[cm >= min_seg_cm]
