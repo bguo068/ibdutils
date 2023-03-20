@@ -1,24 +1,22 @@
 #! /usr/bin/env python3
 
+import gzip
 import io
+import pickle
 import random
 import re
-import pickle
-import gzip
-from pathlib import Path
 from copy import deepcopy
+from pathlib import Path
 from typing import List, Tuple, Union
 
 import allel
 import igraph
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pybedtools as pb
 import scipy.cluster.hierarchy as sch
 from sklearn.cluster import AgglomerativeClustering
-import matplotlib.pyplot as plt
-
-import numpy as np
 
 
 class GeneticMap:
@@ -1412,7 +1410,7 @@ class IBD:
         return new_ibd
 
     def is_valid() -> bool:
-        raise NotImplemented
+        raise NotImplementedError
 
     def pickle_dump(self, out_fn: str):
         # make sure parent folder exist
@@ -1521,7 +1519,7 @@ class IbdComparator:
         # self.popibd_bins  see calc_binned_popibd
         self.factor_chr = factor_chr
         self.factor_sam = factor_sam
-        self.genome_size_cm = ibd1._genome.get_genome_size_cm()
+        self.genome_size_cm = trueibd._genome.get_genome_size_cm()
 
     def calc_false_pos_rate(self):
         """inferred IBD not covered by true IBD"""
@@ -1659,12 +1657,12 @@ class IbdComparator:
         df2 = self.df2[self.df2.FakeId // self.factor_chr == pairid]
 
         for fakeid, s, e in df1.itertuples(index=False):
-            chrno = fakeid % cmp.factor_chr
+            chrno = fakeid % self.factor_chr
             y = 1 + chrno - 0.2
             ax.plot([s, e], [y, y], color="b")
 
         for fakeid, s, e in df2.itertuples(index=False):
-            chrno = fakeid % cmp.factor_chr
+            chrno = fakeid % self.factor_chr
             y = 1 + chrno + 0.2
             ax.plot([s, e], [y, y], color="r")
 
@@ -1682,6 +1680,20 @@ class IbdComparator:
         ax.plot([0, 0], [0, 0], color="b", label="True")
         ax.plot([0, 0], [0, 0], color="r", label="Inferred")
         ax.legend()
+
+    def pickle_dump(self, ofn: str):
+        self.bed1 = None
+        self.bed2 = None
+
+        with gzip.open(ofn, "wb") as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def pickle_load(ifs: str) -> "IbdComparator":
+        with gzip.open(ifs, "rb") as f:
+            self = pickle.load(f)
+            return self
+        return None
 
 
 class SnpEffResHandler:
