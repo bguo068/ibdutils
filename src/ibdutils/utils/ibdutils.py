@@ -974,8 +974,9 @@ class IBD:
         cov_df_4col = self._cov_df[["Chromosome", "Start", "End", "Coverage"]]
         self._peaks_df, _ = IBD._find_peaks(cov_df_4col, chr_df)
 
-    def extract_intervals(self, intervals_df: pd.DataFrame, min_seg_cm=2.0,
-                          rm_short_seg=False):
+    def extract_intervals(
+        self, intervals_df: pd.DataFrame, min_seg_cm=2.0, rm_short_seg=False
+    ):
         """
         update IBD's ibd segment dataframe and only keep parts of segments
         located within the intervals. If `rm_short_seg` is True,
@@ -1439,6 +1440,248 @@ class IBD:
         Number of Chromosomes:                  {self._df.Chromosome.unique().size}
         Head of the IBD dataframe: \n{self._df.head(3)}
         """
+
+
+class IbdComparator:
+    def __init__(self, trueibd: IBD, inferibd: IBD) -> None:
+        df1 = trueibd._df.copy()
+        df2 = inferibd._df.copy()
+
+        # make sample name map
+        samples = np.unique(
+            np.hstack(
+                [df1.Id1.unique(), df1.Id2.unique(), df2.Id1.unique(), df2.Id2.unique()]
+            )
+        )
+        nsam = samples.size
+        samples_map = pd.Series(np.arange(samples.size), index=samples)
+        # encode sample name as integer
+        df1["Id1"] = df1.Id1.map(samples_map)
+        df1["Id2"] = df1.Id2.map(samples_map)
+        df2["Id1"] = df2.Id1.map(samples_map)
+        df2["Id2"] = df2.Id2.map(samples_map)
+        # make (id1, id2) == (id2, id1) by making smaller as id1
+        small = df1[["Id1", "Id2"]].min(axis=1)
+        large = df1[["Id1", "Id2"]].max(axis=1)
+        df1["Id1"] = small
+        df1["Id2"] = large
+        small = df2[["Id1", "Id2"]].min(axis=1)
+        large = df2[["Id1", "Id2"]].max(axis=1)
+        df2["Id1"] = small
+        df2["Id2"] = large
+        # make chromosome map
+        chrs = np.unique(np.hstack([df1.Chromosome.unique(), df2.Chromosome.unique()]))
+        nchr = chrs.size
+        chrs_map = pd.Series(np.arange(chrs.size), index=chrs)
+        # encode chromosome map as integer
+        df1["Chromosome"] = df1.Chromosome.map(chrs_map)
+        df2["Chromosome"] = df2.Chromosome.map(chrs_map)
+        # width in decimal
+        width_sam = np.ceil(np.log10(nsam - 1)).astype(int)
+        factor_sam = 10**width_sam
+        width_chr = np.ceil(np.log10(nchr - 1)).astype(int)
+        factor_chr = 10**width_chr
+        # leading 9 make the fake_id has the order no matter if it's str type or int type
+        leading_9 = 9 * factor_chr * factor_sam * factor_sam
+        # add fakeid
+        df1["FakeId"] = (
+            df1.Chromosome * 1
+            + df1.Id2 * factor_chr
+            + df1.Id1 * factor_chr * factor_sam
+            + leading_9
+        )
+        df2["FakeId"] = (
+            df2.Chromosome * 1
+            + df2.Id2 * factor_chr
+            + df2.Id1 * factor_chr * factor_sam
+            + leading_9
+        )
+        # sort by FakeId and Start
+        df1 = (
+            df1[["FakeId", "Start", "End"]]
+            .sort_values(["FakeId", "Start"])
+            .reset_index(drop=True)
+        )
+        df2 = (
+            df2[["FakeId", "Start", "End"]]
+            .sort_values(["FakeId", "Start"])
+            .reset_index(drop=True)
+        )
+
+        self.df1 = df1
+        self.df2 = df2
+        self.samples = samples
+        self.samples_map = samples_map
+        self.chrs = chrs
+        self.chrs_map = chrs_map
+        self.bed1 = pb.BedTool.from_dataframe(df1)
+        self.bed2 = pb.BedTool.from_dataframe(df2)
+        self.bp_per_cm = 15000
+        self.fnfp_bins = [2.0, 2.5, 3.0, 4.0, 6.0, 10.0, 18.0, np.inf]
+        # self.popibd_bins  see calc_binned_popibd
+        self.factor_chr = factor_chr
+        self.factor_sam = factor_sam
+        self.genome_size_cm = ibd1._genome.get_genome_size_cm()
+
+    def calc_false_pos_rate(self):
+        """inferred IBD not covered by true IBD"""
+        intersect21 = self.bed2.intersect(
+            self.bed1, sorted=True, wao=True
+        ).to_dataframe()
+        intersect21.columns = [
+            "FakeId2",
+            "Start2",
+            "End2",
+            "FakeId1",
+            "Start1",
+            "End1",
+            "BpOverlap",
+        ]
+
+        intersect21_agg = (
+            intersect21.groupby(
+                [
+                    "FakeId2",
+                    "Start2",
+                    "End2",
+                ]
+            )["BpOverlap"]
+            .sum()
+            .reset_index()
+        ).assign(NonOverlapRate=lambda df: 1 - df.BpOverlap / (df.End2 - df.Start2))
+
+        intersect21_agg["Bin2"] = pd.cut(
+            (intersect21_agg.End2 - intersect21_agg.Start2) / self.bp_per_cm,
+            self.fnfp_bins,
+            right=False,
+        )
+        intersect21_agg_agg = (
+            intersect21_agg.groupby("Bin2").NonOverlapRate.mean().reset_index()
+        )
+        intersect21_agg_agg.columns = ["Bin", "FalsePosRate"]
+        return intersect21_agg_agg
+
+    def calc_false_neg_rate(self):
+        """true IBD not covered by false IBD"""
+
+        intersect12 = self.bed1.intersect(
+            self.bed2, sorted=True, wao=True
+        ).to_dataframe()
+
+        intersect12.columns = [
+            "FakeId1",
+            "Start1",
+            "End1",
+            "FakeId2",
+            "Start2",
+            "End2",
+            "BpOverlap",
+        ]
+        intersect12_agg = (
+            intersect12.groupby(
+                [
+                    "FakeId1",
+                    "Start1",
+                    "End1",
+                ]
+            )["BpOverlap"]
+            .sum()
+            .reset_index()
+        ).assign(NonOverlapRate=lambda df: 1 - df.BpOverlap / (df.End1 - df.Start1))
+
+        intersect12_agg["Bin1"] = pd.cut(
+            (intersect12_agg.End1 - intersect12_agg.Start1) / self.bp_per_cm,
+            self.fnfp_bins,
+            right=False,
+        )
+        intersect12_agg_agg = (
+            intersect12_agg.groupby("Bin1").NonOverlapRate.mean().reset_index()
+        )
+        intersect12_agg_agg.columns = ["Bin", "FalseNegRate"]
+        return intersect12_agg_agg
+
+    def calc_pairwise_ibd_count_diff(self):
+        pairid1 = self.df1.FakeId // self.factor_chr
+        count1 = pairid1.value_counts()
+        count1.name = "Count1"
+        pairid2 = self.df2.FakeId // self.factor_chr
+        count2 = pairid2.value_counts()
+        count2.name = "Count2"
+        df = pd.concat([count1, count2], axis=1).fillna(0)
+        df["PairwiseSegCountErr"] = df.Count2 - df.Count1
+        return df
+
+    def calc_pairwise_totalibd_diff(self):
+        pairid1 = self.df1.FakeId // self.factor_chr
+        cm1 = ((self.df1.End - self.df1.Start) / self.bp_per_cm).rename("Cm1")
+        pairwise_totibd1 = cm1.groupby(pairid1).sum()
+
+        pairid2 = self.df2.FakeId // self.factor_chr
+        cm2 = ((self.df2.End - self.df2.Start) / self.bp_per_cm).rename("Cm2")
+        pairwise_totibd2 = cm2.groupby(pairid2).sum()
+
+        df = pd.concat([pairwise_totibd1, pairwise_totibd2], axis=1).fillna(0.0)
+        df["PairwiseTotIBDErrRelativeToGenomeSize"] = (
+            df.Cm2 - df.Cm1
+        ) / self.genome_size_cm
+        return df
+
+    def calc_binned_pop_ibd(self):
+        min_cm = 2.0
+        max_cm = max(self.df1.End.max(), self.df2.End.max()) / self.bp_per_cm
+        bins = np.arange(min_cm, max_cm, 0.05)
+
+        cm1 = (self.df1.End - self.df1.Start) / self.bp_per_cm
+        cat1 = pd.cut(cm1, bins, right=False)
+        popibd1 = cm1.groupby(cat1).sum().rename("PopIbd1")
+        popibd1[popibd1 == 0.0] = np.nan
+        cm2 = (self.df2.End - self.df2.Start) / self.bp_per_cm
+        cat2 = pd.cut(cm2, bins, right=False)
+        popibd2 = cm2.groupby(cat2).sum().rename("PopIbd2")
+        popibd2[popibd2 == 0.0] = np.nan
+
+        df = pd.concat([popibd1, popibd2], axis=1)
+        df["PopIbdRatio"] = df["PopIbd2"] / df["PopIbd1"]
+
+        return df
+
+    def plot_ibd_for_pair(self, pairid: str, ax=None):
+        id2 = pairid % self.factor_sam
+        id2 = self.samples[id2]
+        id1 = pairid // self.factor_sam % self.factor_sam
+        id2 = self.samples[id2]
+        import matplotlib.pyplot as plt
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(4, 8), constrained_layout=True)
+
+        df1 = self.df1[self.df1.FakeId // self.factor_chr == pairid]
+        df2 = self.df2[self.df2.FakeId // self.factor_chr == pairid]
+
+        for fakeid, s, e in df1.itertuples(index=False):
+            chrno = fakeid % cmp.factor_chr
+            y = 1 + chrno - 0.2
+            ax.plot([s, e], [y, y], color="b")
+
+        for fakeid, s, e in df2.itertuples(index=False):
+            chrno = fakeid % cmp.factor_chr
+            y = 1 + chrno + 0.2
+            ax.plot([s, e], [y, y], color="r")
+
+        # lines to seperate chromosomes
+        for i in range(0, 15):
+            ax.axhline(y=i, color="grey", alpha=0.3, linestyle="--")
+
+        # ytick
+        ax.set_ylim(0, 15)
+        ax.set_yticks(np.arange(1, 15))
+
+        ax.set_title(f"IBD shared by {id1} and {id2}")
+
+        # legend
+        ax.plot([0, 0], [0, 0], color="b", label="True")
+        ax.plot([0, 0], [0, 0], color="r", label="Inferred")
+        ax.legend()
 
 
 class SnpEffResHandler:
