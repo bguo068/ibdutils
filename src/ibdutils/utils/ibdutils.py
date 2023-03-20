@@ -1527,6 +1527,12 @@ class IbdComparator:
         self.factor_chr = factor_chr
         self.factor_sam = factor_sam
         self.genome_size_cm = trueibd._genome.get_genome_size_cm()
+        # result to be filled
+        self.res_false_pos_rate_df = None
+        self.res_false_pos_rate_df = None
+        self.res_pairwise_ibd_count_diff_df = None
+        self.res_pairwise_totalibd_diff_df = None
+        self.res_binned_pop_ibd_df = None
 
     def calc_false_pos_rate(self):
         """inferred IBD not covered by true IBD"""
@@ -1564,6 +1570,9 @@ class IbdComparator:
             intersect21_agg.groupby("Bin2").NonOverlapRate.mean().reset_index()
         )
         intersect21_agg_agg.columns = ["Bin", "FalsePosRate"]
+
+        self.res_false_pos_rate_df = intersect21_agg_agg.copy()
+
         return intersect21_agg_agg
 
     def calc_false_neg_rate(self):
@@ -1603,6 +1612,8 @@ class IbdComparator:
             intersect12_agg.groupby("Bin1").NonOverlapRate.mean().reset_index()
         )
         intersect12_agg_agg.columns = ["Bin", "FalseNegRate"]
+
+        self.res_false_neg_rate_df = intersect12_agg_agg.copy()
         return intersect12_agg_agg
 
     def calc_pairwise_ibd_count_diff(self):
@@ -1614,6 +1625,7 @@ class IbdComparator:
         count2.name = "Count2"
         df = pd.concat([count1, count2], axis=1).fillna(0)
         df["PairwiseSegCountErr"] = df.Count2 - df.Count1
+        self.res_pairwise_ibd_count_diff_df = df.copy()
         return df
 
     def calc_pairwise_totalibd_diff(self):
@@ -1629,6 +1641,7 @@ class IbdComparator:
         df["PairwiseTotIBDErrRelativeToGenomeSize"] = (
             df.Cm2 - df.Cm1
         ) / self.genome_size_cm
+        self.res_pairwise_totalibd_diff_df = df.copy()
         return df
 
     def calc_binned_pop_ibd(self):
@@ -1647,6 +1660,7 @@ class IbdComparator:
 
         df = pd.concat([popibd1, popibd2], axis=1)
         df["PopIbdRatio"] = df["PopIbd2"] / df["PopIbd1"]
+        self.res_binned_pop_ibd_df = df.copy()
 
         return df
 
@@ -1687,6 +1701,14 @@ class IbdComparator:
         ax.plot([0, 0], [0, 0], color="b", label="True")
         ax.plot([0, 0], [0, 0], color="r", label="Inferred")
         ax.legend()
+
+    def compare(self):
+        """run all comparisons"""
+        self.calc_false_pos_rate()
+        self.calc_false_neg_rate()
+        self.calc_pairwise_ibd_count_diff()
+        self.calc_pairwise_totalibd_diff()
+        self.calc_binned_popibd()
 
     def pickle_dump(self, ofn: str):
         self.bed1 = None
