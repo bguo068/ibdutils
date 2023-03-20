@@ -1696,42 +1696,6 @@ class IbdComparator:
         return None
 
 
-class SnpEffResHandler:
-    def __init__(self):
-        self.sample_mutation_table_fn = "/autofs/chib/toconnor_grp/bing/20220314_analyze_joint_call_pf/snpeff/ESEA_annot/sample_mutation_table.tsv"
-        mut = pd.read_csv(self.sample_mutation_table_fn, sep="\t")
-        mut["Sample"] = mut.Sample.str.replace("~.*$", "", regex=True)
-        self.mut = mut
-
-    @staticmethod
-    def get_common_mutations():
-        # TODO: need to update this list
-        return """dhfr:I164L
-        mdr1:Y184F
-        aat1:Q454E aat1:S258L
-        crt:M74I crt:N75D crt:N326S crt:I356T
-        PF3D7_0720700:C1484F
-        dhps:G437A dhps:A581G
-        fd:D193Y
-        k13:C580Y k13:R539T k13:Y493H
-        arps10:V127M
-        """.split()
-
-    def calc_group_allele_frequency(
-        self,
-        sample2group: pd.Series,
-        sel_mutations: List[str] = None,
-        sel_groups: List[str] = None,
-    ):
-        self.mut["Group"] = self.mut.Sample.map(sample2group).values.astype(int)
-        commu_afreq = self.mut.groupby("Group").mean().T
-        if sel_mutations is not None:
-            commu_afreq = commu_afreq.loc[sel_mutations, :]
-        if sel_groups is not None:
-            commu_afreq = commu_afreq.loc[:, sel_groups]
-        return commu_afreq
-
-
 if __name__ == "__main__":
     # test_gmap()
     # test_ibd()
