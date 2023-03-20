@@ -67,8 +67,8 @@ class GeneticMap:
             assert df_chr.shape[0] >= 2
             first, last = df_chr.index.values[0], df_chr.index.values[-1]
 
-            diff_Cm = Cm[(first + 1) : (last + 1)] - Cm[first:last]
-            diff_Bp = Bp[(first + 1) : (last + 1)] - Bp[first:last]
+            diff_Cm = Cm[(first + 1): (last + 1)] - Cm[first:last]
+            diff_Bp = Bp[(first + 1): (last + 1)] - Bp[first:last]
 
             CmPerBp[first:last] = diff_Cm / diff_Bp
             CmPerBp[last] = CmPerBp[last - 1]
@@ -186,8 +186,8 @@ class GeneticMap:
 
             idx = np.searchsorted(gg.Bp, df_chr.Bp.values, side="right") - 1
             cm[s:e] = (
-                gg.Cm.values[idx]
-                + (df_chr.Bp.values - gg.Bp.values[idx]) * gg.CmPerBp.values[idx]
+                gg.Cm.values[idx] +
+                (df_chr.Bp.values - gg.Bp.values[idx]) * gg.CmPerBp.values[idx]
             )
 
         # sort mapped result according the input the order
@@ -357,6 +357,31 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
         return sel
 
     @staticmethod
+    def get_genome_simple_simu(r: float, nchroms: int, seqlen_bp_chr: int) -> "Genome":
+        """[static function]:
+        construct genome_model from predefined information.
+        @genome_model: can be one of "simu_14chr_100cm" and "Pf3D7" """
+
+        bp_per_cm = 0.01 / r
+        chrlen = seqlen_bp_chr
+        chrnos = list(range(1, nchroms + 1))
+
+        chr_df = pd.DataFrame(
+            {"Chromosome": chrnos, "ChromLength": [chrlen] * nchroms}
+        )
+        chr_df["GwChromEnd"] = chr_df.ChromLength.cumsum()
+        chr_df["GwChromStart"] = chr_df.GwChromEnd - chr_df.ChromLength
+        chr_df["GwChromCenter"] = (chr_df.GwChromStart + chr_df.GwChromEnd) / 2
+
+        gmap = GeneticMap.from_const_rate(
+            bp_per_cm=bp_per_cm, chrlen_cm_lst=[100] * 14
+        )
+        genome = Genome(
+            chr_df, drg_df=None, bp_per_cm=bp_per_cm, gmap=gmap, label="custom"
+        )
+        return genome
+
+    @staticmethod
     def get_genome(genome_model: str) -> "Genome":
         """[static function]:
         construct genome_model from predefined information.
@@ -364,25 +389,8 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
 
         assert genome_model in ["simu_14chr_100cm", "Pf3D7"]
         if genome_model == "simu_14chr_100cm":
-            bp_per_cm = 15_000
-            chrlen = 100 * bp_per_cm
-            nchroms = 14
-            chrnos = list(range(1, nchroms + 1))
-
-            chr_df = pd.DataFrame(
-                {"Chromosome": chrnos, "ChromLength": [chrlen] * nchroms}
-            )
-            chr_df["GwChromEnd"] = chr_df.ChromLength.cumsum()
-            chr_df["GwChromStart"] = chr_df.GwChromEnd - chr_df.ChromLength
-            chr_df["GwChromCenter"] = (chr_df.GwChromStart + chr_df.GwChromEnd) / 2
-
-            gmap = GeneticMap.from_const_rate(
-                bp_per_cm=bp_per_cm, chrlen_cm_lst=[100] * 14
-            )
-            genome = Genome(
-                chr_df, drg_df=None, bp_per_cm=bp_per_cm, gmap=gmap, label=genome_model
-            )
-
+            genome = Genome.get_genome_simple_simu(
+                r=0.01/15000, nchroms=14, seqlen_bp_chr=15000 * 100)
         elif genome_model == "Pf3D7":
             bp_per_cm = 15_000
             chrlen_lst = Genome._get_pf3d7_chrlen_lst()
@@ -404,7 +412,6 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
             )
 
         else:
-            genome = None
             raise Exception("Genome not implemented!")
 
         return genome
@@ -516,7 +523,7 @@ class VCF:
                 drop=True
             )  # drop original index and  add new 0-n index
             .rename_axis(index="Idx")  # rename index name
-            .rename("Assignment")  #  rename value name
+            .rename("Assignment")  # rename value name
             .reset_index()  # make a dataframe
             .groupby("Assignment")["Idx"]  # make a series of list
             .apply(list)
@@ -933,8 +940,8 @@ class IBD:
             # core regions
             core_df = chrom_cov_df.loc[
                 lambda x: (
-                    x.Coverage
-                    > q75 + 1.5 * iqr
+                    x.Coverage >
+                    q75 + 1.5 * iqr
                     # x.Coverage
                     # > trim_mean + 2 * trim_std
                 )
@@ -1483,16 +1490,16 @@ class IbdComparator:
         leading_9 = 9 * factor_chr * factor_sam * factor_sam
         # add fakeid
         df1["FakeId"] = (
-            df1.Chromosome * 1
-            + df1.Id2 * factor_chr
-            + df1.Id1 * factor_chr * factor_sam
-            + leading_9
+            df1.Chromosome * 1 +
+            df1.Id2 * factor_chr +
+            df1.Id1 * factor_chr * factor_sam +
+            leading_9
         )
         df2["FakeId"] = (
-            df2.Chromosome * 1
-            + df2.Id2 * factor_chr
-            + df2.Id1 * factor_chr * factor_sam
-            + leading_9
+            df2.Chromosome * 1 +
+            df2.Id2 * factor_chr +
+            df2.Id1 * factor_chr * factor_sam +
+            leading_9
         )
         # sort by FakeId and Start
         df1 = (
