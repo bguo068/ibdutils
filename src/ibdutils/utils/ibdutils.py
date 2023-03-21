@@ -718,6 +718,10 @@ class IBD:
 
     def flatten_diploid_ibd(self, method="merge"):
         """method can be ["keep_hap_1_only",  "merge"]"""
+
+        if self._df.shape[0] == 0:
+            return
+
         assert method in ["merge", "keep_hap_1_only"]
         if method == "keep_hap_1_only":
             self._df = self._df[lambda df: (df.Hap1 == 1) & (df.Hap2 == 1)]
@@ -1039,6 +1043,10 @@ class IBD:
     @staticmethod
     def _remove_intervals(ibd_in: pd.DataFrame, intervals_df):
         ibd = ibd_in.copy()
+
+        if intervals_df.shape[0] == 0:
+            return ibd
+
 
         # backup datatype
         id1_dtype = ibd["Id1"].dtype
@@ -1708,7 +1716,7 @@ class IbdComparator:
         self.calc_false_neg_rate()
         self.calc_pairwise_ibd_count_diff()
         self.calc_pairwise_totalibd_diff()
-        self.calc_binned_popibd()
+        self.calc_binned_pop_ibd()
 
     def pickle_dump(self, ofn: str):
         self.bed1 = None
