@@ -659,6 +659,10 @@ class IBD:
         ibd["Id1"] = tmp_id1
         ibd["Id2"] = tmp_id2
 
+        # ensure coords are integers
+        ibd['Start'] = ibd.Start.astype(int)
+        ibd['End'] = ibd.End.astype(int)
+
         # get unique sample series
         self._samples = pd.Series(
             np.unique(np.hstack([ibd.Id1.unique(), ibd.Id2.unique()]))
