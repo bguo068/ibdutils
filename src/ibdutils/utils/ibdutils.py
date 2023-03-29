@@ -17,6 +17,7 @@ import pandas as pd
 import pybedtools as pb
 import scipy.cluster.hierarchy as sch
 from sklearn.cluster import AgglomerativeClustering
+
 from ..stats import calc_xirs, get_afreq_from_vcf_files
 
 
@@ -83,7 +84,8 @@ class GeneticMap:
 
     def to_plink_maps(self, fn_prefix="", sep=" ", per_chr: bool = True):
         # NOTE: before writing to plink format, remove the bp = 0 rows
-        df = self.gmap[lambda df: df.Bp != 0].sort_values(["Chromosome", "Bp"]).copy()
+        df = self.gmap[lambda df: df.Bp != 0].sort_values(
+            ["Chromosome", "Bp"]).copy()
         df["VarId"] = "."
         df = df[["Chromosome", "VarId", "Cm", "Bp"]]
 
@@ -147,7 +149,8 @@ class GeneticMap:
         assert chrom.shape == cm.shape
         assert len(chrom.shape) == 1
         df = pd.DataFrame(
-            {"Chromosome": chrom, "Cm": cm, "InputOrder": np.arange(chrom.shape[0])}
+            {"Chromosome": chrom, "Cm": cm,
+                "InputOrder": np.arange(chrom.shape[0])}
         )
         df = df.sort_values(["Chromosome", "Cm"]).reset_index(drop=True)
         gmap_grouped = self.gmap.groupby("Chromosome")
@@ -173,7 +176,8 @@ class GeneticMap:
         assert chrom.shape == bp.shape
         assert len(chrom.shape) == 1
         df = pd.DataFrame(
-            {"Chromosome": chrom, "Bp": bp, "InputOrder": np.arange(chrom.shape[0])}
+            {"Chromosome": chrom, "Bp": bp,
+                "InputOrder": np.arange(chrom.shape[0])}
         )
         df = df.sort_values(["Chromosome", "Bp"]).reset_index(drop=True)
         gmap_grouped = self.gmap.groupby("Chromosome")
@@ -187,8 +191,9 @@ class GeneticMap:
 
             idx = np.searchsorted(gg.Bp, df_chr.Bp.values, side="right") - 1
             cm[s:e] = (
-                gg.Cm.values[idx] +
-                (df_chr.Bp.values - gg.Bp.values[idx]) * gg.CmPerBp.values[idx]
+                gg.Cm.values[idx]
+                + (df_chr.Bp.values -
+                   gg.Bp.values[idx]) * gg.CmPerBp.values[idx]
             )
 
         # sort mapped result according the input the order
@@ -322,7 +327,8 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
         )["Description"]
 
         df["GeneId"] = (
-            df["Attributes"].str.extract("ID=(?P<ID>[^;]*)", expand=True).fillna("")
+            df["Attributes"].str.extract(
+                "ID=(?P<ID>[^;]*)", expand=True).fillna("")
         )["ID"]
 
         gene_map = {
@@ -368,15 +374,13 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
         chrnos = list(range(1, nchroms + 1))
 
         chr_df = pd.DataFrame(
-            {"Chromosome": chrnos, "ChromLength": [chrlen] * nchroms}
-        )
+            {"Chromosome": chrnos, "ChromLength": [chrlen] * nchroms})
         chr_df["GwChromEnd"] = chr_df.ChromLength.cumsum()
         chr_df["GwChromStart"] = chr_df.GwChromEnd - chr_df.ChromLength
         chr_df["GwChromCenter"] = (chr_df.GwChromStart + chr_df.GwChromEnd) / 2
 
         gmap = GeneticMap.from_const_rate(
-            bp_per_cm=bp_per_cm, chrlen_cm_lst=[100] * 14
-        )
+            bp_per_cm=bp_per_cm, chrlen_cm_lst=[100] * 14)
         genome = Genome(
             chr_df, drg_df=None, bp_per_cm=bp_per_cm, gmap=gmap, label="custom"
         )
@@ -391,17 +395,20 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
         assert genome_model in ["simu_14chr_100cm", "Pf3D7"]
         if genome_model == "simu_14chr_100cm":
             genome = Genome.get_genome_simple_simu(
-                r=0.01/15000, nchroms=14, seqlen_bp_chr=15000 * 100)
+                r=0.01 / 15000, nchroms=14, seqlen_bp_chr=15000 * 100
+            )
         elif genome_model == "Pf3D7":
             bp_per_cm = 15_000
             chrlen_lst = Genome._get_pf3d7_chrlen_lst()
             nchroms = len(chrlen_lst)
             chrnos = list(range(1, 1 + nchroms))
 
-            chr_df = pd.DataFrame({"Chromosome": chrnos, "ChromLength": chrlen_lst})
+            chr_df = pd.DataFrame(
+                {"Chromosome": chrnos, "ChromLength": chrlen_lst})
             chr_df["GwChromEnd"] = chr_df.ChromLength.cumsum()
             chr_df["GwChromStart"] = chr_df.GwChromEnd - chr_df.ChromLength
-            chr_df["GwChromCenter"] = (chr_df.GwChromStart + chr_df.GwChromEnd) / 2
+            chr_df["GwChromCenter"] = (
+                chr_df.GwChromStart + chr_df.GwChromEnd) / 2
 
             drg_df = Genome._get_annotation()
 
@@ -449,8 +456,10 @@ class VCF:
         return v
 
     def read_calldata(self, alt_number=1):
-        allsamples = pd.DataFrame({"Orig": allel.read_vcf_headers(self.vcf_fn).samples})
-        allsamples["Sample"] = allsamples.Orig.str.replace("~.*$", "", regex=True)
+        allsamples = pd.DataFrame(
+            {"Orig": allel.read_vcf_headers(self.vcf_fn).samples})
+        allsamples["Sample"] = allsamples.Orig.str.replace(
+            "~.*$", "", regex=True)
         if self.samples is None:
             self.samples = allsamples.Sample
 
@@ -578,6 +587,8 @@ class IBD:
         self._label = label
         self._cov_df = None
         self._peaks_df = None
+        self._peaks_df_bk = None
+        self._xirs_df = None
         self._flag_peaks_already_removed = False
 
     def set_genome(self, genome: Genome):
@@ -649,7 +660,8 @@ class IBD:
 
         # filter by samples
         if samples is not None:
-            ibd: pd.DataFrame = ibd[ibd.Id1.isin(samples) & ibd.Id2.isin(samples)]
+            ibd: pd.DataFrame = ibd[ibd.Id1.isin(
+                samples) & ibd.Id2.isin(samples)]
 
         # swap Id1 and Id2 if Id1 > Id2
         to_swap = ibd.Id1 > ibd.Id2
@@ -661,8 +673,8 @@ class IBD:
         ibd["Id2"] = tmp_id2
 
         # ensure coords are integers
-        ibd['Start'] = ibd.Start.astype(int)
-        ibd['End'] = ibd.End.astype(int)
+        ibd["Start"] = ibd.Start.astype(int)
+        ibd["End"] = ibd.End.astype(int)
 
         # get unique sample series
         self._samples = pd.Series(
@@ -682,7 +694,8 @@ class IBD:
         if uniq_samples.size % 2 == 1:
             # omit one sample to make it an even number of haplotypes
             last = uniq_samples[-1]
-            self._df = self._df[lambda df: ~((df.Id1 == last) | (df.Id2 == last))]
+            self._df = self._df[lambda df: ~(
+                (df.Id1 == last) | (df.Id2 == last))]
             uniq_samples = uniq_samples[:-1]
 
         # conversion: After sorting the unique sample names alphabetically,
@@ -704,13 +717,16 @@ class IBD:
         # make sure (Sample1, Hap1) not larger than (Sample2, Hap2). This is
         # important for merge/flattening step
         condition1 = self._df.Id1 > self._df.Id2
-        condition2 = (self._df.Id1 == self._df.Id2) & (self._df.Hap1 > self._df.Hap2)
+        condition2 = (self._df.Id1 == self._df.Id2) & (
+            self._df.Hap1 > self._df.Hap2)
         to_swap = condition1 | condition2
 
         tmp_id1 = np.where(to_swap, self._df.Id2.values, self._df.Id1.values)
         tmp_id2 = np.where(to_swap, self._df.Id1.values, self._df.Id2.values)
-        tmp_Hap1 = np.where(to_swap, self._df.Hap2.values, self._df.Hap1.values)
-        tmp_Hap2 = np.where(to_swap, self._df.Hap1.values, self._df.Hap2.values)
+        tmp_Hap1 = np.where(to_swap, self._df.Hap2.values,
+                            self._df.Hap1.values)
+        tmp_Hap2 = np.where(to_swap, self._df.Hap1.values,
+                            self._df.Hap2.values)
 
         self._df["Id1"] = tmp_id1
         self._df["Id2"] = tmp_id2
@@ -835,7 +851,8 @@ class IBD:
         starts = np.hstack(start_arr_lst)
         chroms = np.hstack(chr_arr_lst)
 
-        sp_df = pd.DataFrame({"Chromosome": chroms, "Start": starts, "End": starts + 1})
+        sp_df = pd.DataFrame(
+            {"Chromosome": chroms, "Start": starts, "End": starts + 1})
         sp_df["Chromosome"] = sp_df.Chromosome.astype(str)
         sp_df.sort_values(["Chromosome", "Start"], inplace=True)
         sp_bed = pb.BedTool.from_dataframe(sp_df)
@@ -858,7 +875,8 @@ class IBD:
         cov_df.columns = ["Chromosome", "Start", "End", "Coverage"]
 
         # add Gw bp positions
-        gwstarts = self._genome.get_genome_wide_coords(cov_df.Chromosome, cov_df.Start)
+        gwstarts = self._genome.get_genome_wide_coords(
+            cov_df.Chromosome, cov_df.Start)
         cov_df["GwStart"] = gwstarts
 
         self._cov_df = cov_df.sort_values(["GwStart"])
@@ -942,25 +960,29 @@ class IBD:
             assert np.all((s[1:-1] - s[:-2]) == (s[1:-1] - s[:-2]).mean())
             step = s[1] - s[0]
             # threshold
-            q25, q50, q75 = np.quantile(chrom_cov_df.Coverage, q=[0.25, 0.5, 0.75])
+            q25, q50, q75 = np.quantile(
+                chrom_cov_df.Coverage, q=[0.25, 0.5, 0.75])
             iqr = q75 - q25
             # trim_mean = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].mean()
             # trim_std = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].std()
             # core regions
             core_df = chrom_cov_df.loc[
                 lambda x: (
-                    x.Coverage >
-                    q75 + 1.5 * iqr
+                    x.Coverage
+                    > q75 + 1.5 * iqr
                     # x.Coverage
                     # > trim_mean + 2 * trim_std
                 )
             ]
-            core_bed = pb.BedTool.from_dataframe(core_df.iloc[:, :3]).merge(d=step)
+            core_bed = pb.BedTool.from_dataframe(
+                core_df.iloc[:, :3]).merge(d=step)
             # extension region
             ext_df = chrom_cov_df.loc[lambda x: x.Coverage > q50]
-            ext_bed = pb.BedTool.from_dataframe(ext_df.iloc[:, :3]).merge(d=step)
+            ext_bed = pb.BedTool.from_dataframe(
+                ext_df.iloc[:, :3]).merge(d=step)
             # extension region intersect with core regions
-            peaks = ext_bed.intersect(core_bed, wa=True).merge(d=step).to_dataframe()
+            peaks = ext_bed.intersect(
+                core_bed, wa=True).merge(d=step).to_dataframe()
             if peaks.shape[0] > 0:
                 peaks["Median"] = q50
                 peaks["Thres"] = q75 + 1.5 * iqr
@@ -970,7 +992,8 @@ class IBD:
             stats["Thres"].append(q75 + 1.5 * iqr)
         peaks_df = pd.concat(peaks_lst)
         if peaks_df.shape[0] > 0:
-            peaks_df.columns = ["Chromosome", "Start", "End", "Median", "Thres"]
+            peaks_df.columns = ["Chromosome",
+                                "Start", "End", "Median", "Thres"]
             # make genome-wide coordinates
             chr_df_tmp = chr_df[["Chromosome", "GwChromStart"]]
             peaks_df = peaks_df.merge(chr_df_tmp, how="left", on="Chromosome")
@@ -978,7 +1001,8 @@ class IBD:
             peaks_df["GwEnd"] = peaks_df.End + peaks_df.GwChromStart
         # stats
         chr_df_tmp = chr_df[["Chromosome", "GwChromStart", "GwChromEnd"]]
-        stats_df = pd.DataFrame(stats).merge(chr_df_tmp, how="left", on="Chromosome")
+        stats_df = pd.DataFrame(stats).merge(
+            chr_df_tmp, how="left", on="Chromosome")
         return peaks_df, stats_df
 
     def find_peaks(self):
@@ -1004,27 +1028,35 @@ class IBD:
 
         Returns
         -------
-            None, 
+            None,
             self._peak_df will be modified if there are peaks not having
             significant SNPs.
         """
         assert self._peaks_df is not None
-        sel = xirs_df['Pvalue'] < 0.05 / xirs_df.shape[0]
-        sig_df = xirs_df.loc[sel, ['Chromosome', 'Pos']].copy()
+        sel = xirs_df["Pvalue"] < 0.05 / xirs_df.shape[0]
+        sig_df = xirs_df.loc[sel, ["Chromosome", "Pos"]].copy()
         if sig_df.shape[0] == 0 or self._peaks_df.shape[0] == 0:
             return
-        sig_df.columns = ['Chromosome', 'Start']
-        sig_df['End'] = sig_df['Start'] + 1
-        sig_bed = pb.BedTool.from_dataframe(sig_df) 
-        peak_bed = pb.BedTool.from_dataframe(self._peaks_df[['Chromosome', 'Start', 'End']])
+        sig_df.columns = ["Chromosome", "Start"]
+        sig_df["End"] = sig_df["Start"] + 1
+        sig_bed = pb.BedTool.from_dataframe(sig_df)
+        peak_bed = pb.BedTool.from_dataframe(
+            self._peaks_df[["Chromosome", "Start", "End"]]
+        )
 
         filt_df = peak_bed.intersect(sig_bed, wa=True).to_dataframe()
-        if filt_df.shape[0]:
+        if filt_df.shape[0] == 0:
+            self._peaks_df_bk = self._peaks_df.copy()
             self._peaks_df = pd.DataFrame({})
-            return 
-        filt_df.columns = ['Chromosome', 'Start', 'End']
-        filt_df= filt_df[['Chromosome', 'Start']]
-        self._peak_df = self._peak_df.merge(filt_df, how='left', on=['Chromosome', 'Start'])
+            return
+        filt_df.columns = ["Chromosome", "Start", "End"]
+        # different hits may hit the same peak candidate
+        filt_df = filt_df[["Chromosome", "Start"]].drop_duplicates()
+        filt_peaks_df = self._peaks_df.merge(
+            filt_df, how="left", on=["Chromosome", "Start"]
+        )
+        self._peaks_df_bk = self._peaks_df.copy()
+        self._peaks_df = filt_peaks_df
 
     def extract_intervals(
         self, intervals_df: pd.DataFrame, min_seg_cm=2.0, rm_short_seg=False
@@ -1036,7 +1068,8 @@ class IBD:
         """
         assert self._genome is not None
         ibd = IBD._extract_intervals(self._df, intervals_df)
-        cm = self._genome._gmap.get_length_in_cm(ibd.Chromosome, ibd.Start, ibd.End)
+        cm = self._genome._gmap.get_length_in_cm(
+            ibd.Chromosome, ibd.Start, ibd.End)
         if rm_short_seg:
             ibd = ibd[cm >= min_seg_cm]
 
@@ -1063,11 +1096,14 @@ class IBD:
             )
         )
         # only the first 3 columns are needed
-        intervals_bed = pb.BedTool.from_dataframe(intervals_df.iloc[:, range(3)])
+        intervals_bed = pb.BedTool.from_dataframe(
+            intervals_df.iloc[:, range(3)])
 
         # TODO: parallelize per chromosome
-        ibd_extract = ibd_bed.intersect(intervals_bed, sorted=True).to_dataframe()
-        ibd_extract.columns = ["Chromosome", "Start", "End", "Name", "Score", "Strand"]
+        ibd_extract = ibd_bed.intersect(
+            intervals_bed, sorted=True).to_dataframe()
+        ibd_extract.columns = ["Chromosome", "Start",
+                               "End", "Name", "Score", "Strand"]
         ibd_extract[["Id1", "Id2"]] = (
             ibd_extract["Name"].str.split(":", expand=True).iloc[:, :2]
         )
@@ -1090,7 +1126,6 @@ class IBD:
         if intervals_df.shape[0] == 0:
             return ibd
 
-
         # backup datatype
         id1_dtype = ibd["Id1"].dtype
         id2_dytpe = ibd["Id2"].dtype
@@ -1108,20 +1143,24 @@ class IBD:
             )
         )
         # only the first 3 columns are needed
-        intervals_bed = pb.BedTool.from_dataframe(intervals_df.iloc[:, range(3)])
+        intervals_bed = pb.BedTool.from_dataframe(
+            intervals_df.iloc[:, range(3)])
 
         # TODO: parallelize per chromosome
         ibd_subtract = ibd_bed.subtract(intervals_bed).to_dataframe()
-        ibd_subtract.columns = ["Chromosome", "Start", "End", "Name", "Score", "Strand"]
+        ibd_subtract.columns = ["Chromosome",
+                                "Start", "End", "Name", "Score", "Strand"]
         ibd_subtract[["Id1", "Id2"]] = (
             ibd_subtract["Name"].str.split(":", expand=True).iloc[:, :2]
         )
-        ibd_subtract = ibd_subtract[["Id1", "Id2", "Chromosome", "Start", "End"]]
+        ibd_subtract = ibd_subtract[[
+            "Id1", "Id2", "Chromosome", "Start", "End"]]
 
         # resume datatypes
         ibd_subtract["Id1"] = ibd_subtract["Id1"].astype(id1_dtype)
         ibd_subtract["Id2"] = ibd_subtract["Id2"].astype(id2_dytpe)
-        ibd_subtract["Chromosome"] = ibd_subtract["Chromosome"].astype(chr_dtype)
+        ibd_subtract["Chromosome"] = ibd_subtract["Chromosome"].astype(
+            chr_dtype)
 
         # filter short segment after removing
         # too_short = ibd_rm_peaks.End - ibd_rm_peaks.Start < 2 * bp_per_cm
@@ -1133,7 +1172,8 @@ class IBD:
         assert self._genome is not None
 
         ibd = self._remove_intervals(self._df, self._peaks_df)
-        cm = self._genome._gmap.get_length_in_cm(ibd.Chromosome, ibd.Start, ibd.End)
+        cm = self._genome._gmap.get_length_in_cm(
+            ibd.Chromosome, ibd.Start, ibd.End)
         if rm_short_seg:
             ibd = ibd[cm >= min_seg_cm]
 
@@ -1160,7 +1200,8 @@ class IBD:
         contig_edges.append(chrlen_df.GwChromEnd.tolist()[-1])
         contig_edges.extend(peaks_df.GwStart.tolist())
         contig_edges.extend(peaks_df.GwEnd.tolist())
-        contig_edges = np.unique(np.array(contig_edges))  # also sorted by this function
+        # also sorted by this function
+        contig_edges = np.unique(np.array(contig_edges))
 
         # shift IBD segment start and end to genome-wide coordinates
         ibd["Start"] = gw_chrom_start[ibd.Chromosome - 1] + ibd.Start
@@ -1261,10 +1302,13 @@ class IBD:
             names = pd.Series(names)
             ibd["Assignment1"] = ibd.Id1.map(assignment)
             ibd["Assignment2"] = ibd.Id2.map(assignment)
-            ibd["Assignment1"] = pd.Categorical(ibd["Assignment1"], categories=names)
-            ibd["Assignment2"] = pd.Categorical(ibd["Assignment2"], categories=names)
+            ibd["Assignment1"] = pd.Categorical(
+                ibd["Assignment1"], categories=names)
+            ibd["Assignment2"] = pd.Categorical(
+                ibd["Assignment2"], categories=names)
             ibd = (
-                ibd.groupby((["Assignment1", "Assignment2"]))["Cm"].sum().reset_index()
+                ibd.groupby((["Assignment1", "Assignment2"]))[
+                    "Cm"].sum().reset_index()
             )
 
             # make subpopulation level total ibd
@@ -1393,10 +1437,10 @@ class IBD:
 
     def subset_ibd_by_samples(self, subset_samples: pd.Series):
         self._df = self._df.loc[
-            lambda df: df.Id1.isin(subset_samples) & df.Id2.isin(subset_samples)
+            lambda df: df.Id1.isin(
+                subset_samples) & df.Id2.isin(subset_samples)
         ]
         self._samples = pd.Series(self.get_samples_shared_ibd())
-
 
     def calc_xirs(
         self,
@@ -1489,7 +1533,10 @@ class IBD:
 
         samples = pd.Series(self.get_samples_shared_ibd())
 
-        if not pd.api.types.is_integer_dtype(samples) and samples.str.contains("@").any():
+        if (
+            not pd.api.types.is_integer_dtype(samples)
+            and samples.str.contains("@").any()
+        ):
             # flattened
             tmp = self._df.Id1.str.split("@", expand=True)
             s1 = set(tmp.iloc[:, 0])
@@ -1508,9 +1555,11 @@ class IBD:
             rm_sample_name_suffix=rm_vcf_sample_name_suffix,
             samples=haploid_samples,
         )
-        frq_all_df = frq_all_df[lambda df: (df.Freq >= min_maf) & (df.Freq <= 1 - min_maf)]
+        frq_all_df = frq_all_df[
+            lambda df: (df.Freq >= min_maf) & (df.Freq <= 1 - min_maf)
+        ]
 
-        ibd_all = self._df
+        ibd_all = self._df.copy()
 
         # encode sample as integer
         ibd_all["Id1"] = pd.Categorical(ibd_all.Id1, categories=samples).codes
@@ -1518,6 +1567,8 @@ class IBD:
 
         df = calc_xirs(frq_all_df, ibd_all)
         df = df.sort_values(["Chromosome", "Pos"])
+
+        self._xirs_df = df.copy()
 
         return df
 
@@ -1547,7 +1598,8 @@ class IBD:
 
         # call infomap
         random.seed(seed)
-        vc = igraph.Graph.community_infomap(g, edge_weights="weight", trials=trials)
+        vc = igraph.Graph.community_infomap(
+            g, edge_weights="weight", trials=trials)
 
         # get vc.membership
         member_df = pd.DataFrame(
@@ -1630,7 +1682,8 @@ class IbdComparator:
         # make sample name map
         samples = np.unique(
             np.hstack(
-                [df1.Id1.unique(), df1.Id2.unique(), df2.Id1.unique(), df2.Id2.unique()]
+                [df1.Id1.unique(), df1.Id2.unique(),
+                 df2.Id1.unique(), df2.Id2.unique()]
             )
         )
         nsam = samples.size
@@ -1650,7 +1703,8 @@ class IbdComparator:
         df2["Id1"] = small
         df2["Id2"] = large
         # make chromosome map
-        chrs = np.unique(np.hstack([df1.Chromosome.unique(), df2.Chromosome.unique()]))
+        chrs = np.unique(
+            np.hstack([df1.Chromosome.unique(), df2.Chromosome.unique()]))
         nchr = chrs.size
         chrs_map = pd.Series(np.arange(chrs.size), index=chrs)
         # encode chromosome map as integer
@@ -1665,16 +1719,16 @@ class IbdComparator:
         leading_9 = 9 * factor_chr * factor_sam * factor_sam
         # add fakeid
         df1["FakeId"] = (
-            df1.Chromosome * 1 +
-            df1.Id2 * factor_chr +
-            df1.Id1 * factor_chr * factor_sam +
-            leading_9
+            df1.Chromosome * 1
+            + df1.Id2 * factor_chr
+            + df1.Id1 * factor_chr * factor_sam
+            + leading_9
         )
         df2["FakeId"] = (
-            df2.Chromosome * 1 +
-            df2.Id2 * factor_chr +
-            df2.Id1 * factor_chr * factor_sam +
-            leading_9
+            df2.Chromosome * 1
+            + df2.Id2 * factor_chr
+            + df2.Id1 * factor_chr * factor_sam
+            + leading_9
         )
         # sort by FakeId and Start
         df1 = (
@@ -1812,7 +1866,8 @@ class IbdComparator:
         cm2 = ((self.df2.End - self.df2.Start) / self.bp_per_cm).rename("Cm2")
         pairwise_totibd2 = cm2.groupby(pairid2).sum()
 
-        df = pd.concat([pairwise_totibd1, pairwise_totibd2], axis=1).fillna(0.0)
+        df = pd.concat([pairwise_totibd1, pairwise_totibd2],
+                       axis=1).fillna(0.0)
         df["PairwiseTotIBDErrRelativeToGenomeSize"] = (
             df.Cm2 - df.Cm1
         ) / self.genome_size_cm

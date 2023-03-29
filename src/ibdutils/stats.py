@@ -1,9 +1,10 @@
 #! /usr/bin/env python3
-import allel
-import pandas as pd
-import numpy as np
-from scipy.stats import chi2
 from typing import List, Tuple
+
+import allel
+import numpy as np
+import pandas as pd
+from scipy.stats import chi2
 
 
 def get_afreq_from_vcf_files(
@@ -125,8 +126,12 @@ def get_ibd_status_matrix(ibd_df_chr: pd.DataFrame, pos_chr: np.ndarray) -> np.n
     assert pd.api.types.is_integer_dtype(ibd.Id2)
 
     # ensure the id1, Id2 order
-    r = ibd[["Id1", "Id2"]].max(axis=1).to_numpy()
-    c = ibd[["Id1", "Id2"]].min(axis=1).to_numpy()
+    # NOTE: use astype to convert possible smaller interger type (np.uint8)
+    # to larger ones int. I am not using  np.uint64, as
+    # (np.zeros(1, dtype=np.uint64)[0] + 1) is a float.
+
+    r = ibd[["Id1", "Id2"]].max(axis=1).to_numpy(dtype=int)
+    c = ibd[["Id1", "Id2"]].min(axis=1).to_numpy(dtype=int)
 
     start = np.searchsorted(pos, ibd.Start, side="left")
     end = np.searchsorted(pos, ibd.End, side="right")
@@ -152,7 +157,8 @@ def calc_xirs_raw_stats_per_chr(M: np.ndarray, frq: np.ndarray):
         columns being sample/genome pairs. See `get_ibd_status_matrix`
         function.
     - `frq`: np.ndarray, one dimentional
-        An array of allele frequency with orders corresponding to SNPs of `M` (rows).
+        An array of allele frequency with orders corresponding to SNPs of `M`
+        (rows).
 
     Returns
     ----------Benjamini-Hochberg
