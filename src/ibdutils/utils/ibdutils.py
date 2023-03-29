@@ -17,6 +17,7 @@ import pandas as pd
 import pybedtools as pb
 import scipy.cluster.hierarchy as sch
 from sklearn.cluster import AgglomerativeClustering
+from ..stats import calc_xirs, get_afreq_from_vcf_files
 
 
 class GeneticMap:
@@ -987,6 +988,44 @@ class IBD:
         cov_df_4col = self._cov_df[["Chromosome", "Start", "End", "Coverage"]]
         self._peaks_df, _ = IBD._find_peaks(cov_df_4col, chr_df)
 
+    def filter_peaks_by_xirs(self, xirs_df: pd.DataFrame):
+        """
+        Filter peaks by checking if the peaks contain a SNP that has a
+        sigficant XiR,s value (under positive selection). Significance is
+        determined by the caluclated p value adjusted by the Bonferroni
+        correction, which involves dividing the desired level of significance
+        (usually 0.05) by the number of comparisons being made.
+
+
+        Parameters
+        ----------
+        - `xirs_df`: pd.DataFrame
+            from `self.calc_xirs`
+
+        Returns
+        -------
+            None, 
+            self._peak_df will be modified if there are peaks not having
+            significant SNPs.
+        """
+        assert self._peaks_df is not None
+        sel = xirs_df['Pvalue'] < 0.05 / xirs_df.shape[0]
+        sig_df = xirs_df.loc[sel, ['Chromosome', 'Pos']].copy()
+        if sig_df.shape[0] == 0 or self._peaks_df.shape[0] == 0:
+            return
+        sig_df.columns = ['Chromosome', 'Start']
+        sig_df['End'] = sig_df['Start'] + 1
+        sig_bed = pb.BedTool.from_dataframe(sig_df) 
+        peak_bed = pb.BedTool.from_dataframe(self._peaks_df[['Chromosome', 'Start', 'End']])
+
+        filt_df = peak_bed.intersect(sig_bed, wa=True).to_dataframe()
+        if filt_df.shape[0]:
+            self._peaks_df = pd.DataFrame({})
+            return 
+        filt_df.columns = ['Chromosome', 'Start', 'End']
+        filt_df= filt_df[['Chromosome', 'Start']]
+        self._peak_df = self._peak_df.merge(filt_df, how='left', on=['Chromosome', 'Start'])
+
     def extract_intervals(
         self, intervals_df: pd.DataFrame, min_seg_cm=2.0, rm_short_seg=False
     ):
@@ -1357,6 +1396,130 @@ class IBD:
             lambda df: df.Id1.isin(subset_samples) & df.Id2.isin(subset_samples)
         ]
         self._samples = pd.Series(self.get_samples_shared_ibd())
+
+
+    def calc_xirs(
+        self,
+        vcf_fn_lst: List[str],
+        rm_vcf_sample_name_suffix: bool = False,
+        min_maf: float = 0.01,
+    ) -> pd.DataFrame:
+        """
+        Calculate XiR,s for a given IBD object and related VCF file list. It a wrapper
+        of `calc_xirs` function.
+
+
+        Parameters
+        -----------
+        - `vcf_fn_lst` : a list of str/path
+            A list of vcf file names. The length can be one or more than one. The
+            vcf file is assumed to pesudo diploid samples. The files are used to
+            calculate allele frequency of SNPs. See `get_afreq_from_vcf_files`.
+            Note: Only samples shared IBD segments will be used to calculate allele
+            frequency table.
+        - `rm_vcf_sample_name_suffix`: boolean
+            If true, remove `~.*$` from vcf sample names
+        - `min_maf`: float
+            Only SNPs with maf > `min_maf` will be considered for XiR,s calculation.
+
+        Returns
+        -------
+            pd.DataFrame. It contains the following columns:
+                - Chromosome
+                - Pos
+                - Freq
+                - RawStat
+                - Bin
+                - RawStatMean
+                - RawStatStd
+                - Zscore
+                - ChisqStat
+                - Pvalue: based on ChisqStat of a degree = 1
+                - NegLogP: -np.log10(pvalue)
+            See `calc_xirs`.
+
+        Examples
+        --------
+
+        ### 1. With simulated data.
+
+        ```python
+            genome = Genome.get_genome("simu_14chr_100cm")
+            ibdobj = IBD(genome)
+            ibd_fn_lst = [
+                f"10993_{i}_tskibd.ibd" for i in range(1, 15)
+            ]
+            ibdobj.read_ibd(ibd_fn_lst)
+
+            vcf_fn_lst = [
+                f"0993_{i}.vcf.gz" for i in range(1, 15)
+            ]
+
+            calc_xirs_from_ibd_obj(ibdobj, vcf_fn_lst, min_maf=0.01)
+
+        ```
+
+        ### 2. With empirical data.
+
+        ```python
+            genome = Genome.get_genome("Pf3D7")
+            ibdobj = IBD(genome)
+            ibd_fn_lst = [
+                f"xxx/ESEA_{i}_hmmibd.ibd"
+                for i in range(1, 15)
+            ]
+            ibdobj.read_ibd(ibd_fn_lst, rm_sample_name_suffix=True)
+            M = ibdobj.make_ibd_matrix()
+            unrel_samples = ibdobj.get_unrelated_samples(M)
+            ibdobj.subset_ibd_by_samples(unrel_samples)
+            ibdobj.filter_ibd_by_length(min_seg_cm=4)
+            ibdobj.convert_to_heterozygous_diploids()
+            ibdobj.flatten_diploid_ibd()
+            ibdobj._df
+
+            vcf_fn_lst = [
+                "xxx/ESEA_imputed.vcf.gz"
+            ]
+
+            calc_xirs_from_ibd_obj(ibdobj, vcf_fn_lst, min_maf=0.01)
+
+
+        ```
+        """
+
+        samples = pd.Series(self.get_samples_shared_ibd())
+
+        if not pd.api.types.is_integer_dtype(samples) and samples.str.contains("@").any():
+            # flattened
+            tmp = self._df.Id1.str.split("@", expand=True)
+            s1 = set(tmp.iloc[:, 0])
+            s2 = set(tmp.iloc[:, 1])
+            tmp = self._df.Id2.str.split("@", expand=True)
+            s3 = set(tmp.iloc[:, 0])
+            s4 = set(tmp.iloc[:, 1])
+            haploid_samples = list(s1.union(s2).union(s3).union(s4))
+        else:
+            haploid_samples = samples
+
+        frq_all_df, samples = get_afreq_from_vcf_files(
+            vcf_fn_lst,
+            fix_pf3d7_chrname=True,
+            fix_tsk_samplename=True,
+            rm_sample_name_suffix=rm_vcf_sample_name_suffix,
+            samples=haploid_samples,
+        )
+        frq_all_df = frq_all_df[lambda df: (df.Freq >= min_maf) & (df.Freq <= 1 - min_maf)]
+
+        ibd_all = self._df
+
+        # encode sample as integer
+        ibd_all["Id1"] = pd.Categorical(ibd_all.Id1, categories=samples).codes
+        ibd_all["Id2"] = pd.Categorical(ibd_all.Id2, categories=samples).codes
+
+        df = calc_xirs(frq_all_df, ibd_all)
+        df = df.sort_values(["Chromosome", "Pos"])
+
+        return df
 
     @staticmethod
     def call_infomap_get_member_df(
