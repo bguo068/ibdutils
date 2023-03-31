@@ -1183,7 +1183,11 @@ class IBD:
     # TODO: test the copied code
     @staticmethod
     def _split_chromosomes_at_peaks(ibd_in, peaks_df, chrlen_df):
+
         ibd = ibd_in.copy()
+
+        if peaks_df.shape[0] == 0:
+            return ibd
 
         # add genome wide chromsome start and end coordinates
         chrlen_df["GwChromStart"] = [0] + chrlen_df.ChromLength.cumsum().iloc[
