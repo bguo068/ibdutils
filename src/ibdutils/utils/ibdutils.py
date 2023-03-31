@@ -1548,7 +1548,9 @@ class IBD:
         else:
             haploid_samples = samples
 
-        frq_all_df, samples = get_afreq_from_vcf_files(
+        # use _ instead of samples to avoid the haploid_samples
+        # overwrite diploid sample names
+        frq_all_df, _ = get_afreq_from_vcf_files(
             vcf_fn_lst,
             fix_pf3d7_chrname=True,
             fix_tsk_samplename=True,
