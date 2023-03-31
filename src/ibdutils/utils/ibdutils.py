@@ -1012,7 +1012,7 @@ class IBD:
         cov_df_4col = self._cov_df[["Chromosome", "Start", "End", "Coverage"]]
         self._peaks_df, _ = IBD._find_peaks(cov_df_4col, chr_df)
 
-    def filter_peaks_by_xirs(self, xirs_df: pd.DataFrame):
+    def filter_peaks_by_xirs(self, xirs_df: pd.DataFrame, min_xirs_hits=3):
         """
         Filter peaks by checking if the peaks contain a SNP that has a
         sigficant XiR,s value (under positive selection). Significance is
@@ -1026,6 +1026,10 @@ class IBD:
         - `xirs_df`: pd.DataFrame
             from `self.calc_xirs`
 
+        - `min_xirs_hits`: int
+            only peaks in peaks_df that have at least `min_xirs_hits`
+            significant hits will be kept
+
         Returns
         -------
             None,
@@ -1033,30 +1037,69 @@ class IBD:
             significant SNPs.
         """
         assert self._peaks_df is not None
+        self._peaks_df_bk = self._peaks_df.copy()
+        out_peaks_df = None
+
+        # Bonferroni correction and hits
         sel = xirs_df["Pvalue"] < 0.05 / xirs_df.shape[0]
         sig_df = xirs_df.loc[sel, ["Chromosome", "Pos"]].copy()
-        if sig_df.shape[0] == 0 or self._peaks_df.shape[0] == 0:
-            return
+
+        # if has no peaks (outlier)
+        if self._peaks_df.shape[0] == 0:
+            out_peaks_df = pd.DataFrame({})
+            self.__peaks_df_bk_with_num_xirs_hits = out_peaks_df
+            return out_peaks_df
+
+        # if not hits at all, no matter within or outside peaks
+        if sig_df.shape[0] == 0:
+            out_peaks_df = self._peaks_df.copy()
+            out_peaks_df["NumXirsHits"] = 0
+            self._peaks_df = pd.DataFrame({})
+            self.__peaks_df_bk_with_num_xirs_hits = out_peaks_df
+            return out_peaks_df
+
+        # make bed for sig_df
         sig_df.columns = ["Chromosome", "Start"]
         sig_df["End"] = sig_df["Start"] + 1
         sig_bed = pb.BedTool.from_dataframe(sig_df)
-        peak_bed = pb.BedTool.from_dataframe(
-            self._peaks_df[["Chromosome", "Start", "End"]]
-        )
 
+        # make bed for peaks
+        peak_bed = pb.BedTool.from_dataframe(self._peaks_df[["Chromosome", "Start", "End"]])
+
+        # intersecting
         filt_df = peak_bed.intersect(sig_bed, wa=True).to_dataframe()
+
+        # if not hits found in peaks
         if filt_df.shape[0] == 0:
             self._peaks_df_bk = self._peaks_df.copy()
+            out_peaks_df = self._peaks_df.copy()
+            out_peaks_df["NumXirsHits"] = 0
+            self.__peaks_df_bk_with_num_xirs_hits = out_peaks_df
             self._peaks_df = pd.DataFrame({})
-            return
+            return out_peaks_df
+
+        # rename filt_df
         filt_df.columns = ["Chromosome", "Start", "End"]
-        # different hits may hit the same peak candidate
-        filt_df = filt_df[["Chromosome", "Start"]].drop_duplicates()
-        filt_peaks_df = self._peaks_df.merge(
-            filt_df, how="left", on=["Chromosome", "Start"]
+
+        # different hits may hit the same peak candidate, consolidate and count
+        # hits in each peak
+        filt_df = (
+            filt_df[["Chromosome", "Start"]]
+            .value_counts()
+            .rename("NumXirsHits")
+            .reset_index()
         )
-        self._peaks_df_bk = self._peaks_df.copy()
+
+        # annoate with num_xirs_hits
+        out_peaks_df = self._peaks_df.merge(
+            filt_df, how="inner", on=["Chromosome", "Start"]
+        )
+        self.__peaks_df_bk_with_num_xirs_hits = out_peaks_df
+
+        # filter peaks by NumXirsHits
+        filt_peaks_df = out_peaks_df[lambda df: df.NumXirsHits >= min_xirs_hits].copy()
         self._peaks_df = filt_peaks_df
+        return out_peaks_df
 
     def extract_intervals(
         self, intervals_df: pd.DataFrame, min_seg_cm=2.0, rm_short_seg=False
