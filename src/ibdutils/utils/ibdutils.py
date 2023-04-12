@@ -1137,7 +1137,7 @@ class IBD:
         cov_df_4col = self._cov_df[["Chromosome", "Start", "End", "Coverage"]]
         self._peaks_df, _ = IBD._find_peaks(cov_df_4col, chr_df, method=method)
 
-    def filter_peaks_by_xirs(self, xirs_df: pd.DataFrame, min_xirs_hits=3, alpha=0.05):
+    def filter_peaks_by_xirs(self, xirs_df: pd.DataFrame, min_xirs_hits=1, alpha=0.05):
         """
         Filter peaks by checking if the peaks contain a SNP that has a
         sigficant XiR,s value (under positive selection). Significance is
@@ -1640,7 +1640,7 @@ class IBD:
             If true, remove `~.*$` from vcf sample names
         - `min_maf`: float
             Only SNPs with maf > `min_maf` will be considered for XiR,s calculation.
-        - `multitest_correction`, str, default "bh"
+        - `multitest_correction`, str, default "fdr_bh"
             multiple test correction methods:
             - 'bonferroni': Bonferroni correction by number of snps
             - 'bonferroni_cm': Bonferroni correction by number of snps
