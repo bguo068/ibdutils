@@ -1,0 +1,132 @@
+\documentclass[11pt]{article}
+
+% layout
+\usepackage[margin=1cm,footskip=0.5cm, papersize={8.5in,11in}]{geometry}
+% increase paragraph indent
+\setlength\parindent{18pt}
+
+% for spacing of lists
+\usepackage{enumitem} %
+\usepackage{listings}
+
+% font
+\usepackage[utf8]{inputenc}
+\usepackage[scaled]{helvet} % font
+
+% figure/images
+\usepackage{graphicx}
+\usepackage[labelsep=period]{caption} % change Table/Figure label separators to '.'
+
+% links
+\usepackage[breaklinks=true]{hyperref}
+%\hypersetup{colorlinks=true,citecolor=blue,}
+
+% citations
+\usepackage[backend=biber,style=numeric-comp,sorting=none,sortcites=true]{biblatex}
+% \usepackage[backend=biber,style=numeric-comp,sorting=none,sortcites=true]{biblatex}
+% \usepackage[backend=biber,style=alphabetic,sorting=none]{biblatex}
+
+% references
+\addbibresource{refs.bib} %Import the bibliography file
+%\let\cite=\supercite % make citation as superscript
+
+% others
+\usepackage{amsmath} % \text{xxxx} command
+\usepackage{amssymb} % for \checkmark command
+
+% tables
+\usepackage[table]{xcolor} % use color in table
+\usepackage{array} % change spacing of table
+\usepackage{caption}
+\captionsetup[table]{skip=5pt} % increase space between caption and table/figure
+\usepackage{multirow} % for \multirow and \multicolumn commands
+
+% \captionsetup{justification=raggedright,singlelinecheck=false}
+
+\begin{document}
+\section {Peak identification and filteration}
+\begin{itemize}[noitemsep,topsep=0pt]
+	\item Peak identification
+	      \begin{itemize}[noitemsep, topsep=0pt]
+		      \item \textbf{std}:
+		            $t = \mu_\text{trim} + 2 \sigma_\text{trim}$,
+		            extending to the chromosomal median line.
+		      \item \textbf{iqr}:
+		            $t = q_3 + 1.5 (q_3 - q_1) $,
+		            extending to the chromosomal median line.
+	      \end{itemize}
+	\item Peak filteration
+	      \begin{itemize}[noitemsep, topsep=0pt]
+		      \item \textbf{filt}:
+		            Peaks are kept only when they contain $n\ge1$ $X_{\text{iR},s}$ hits
+		            \begin{itemize}[noitemsep, topsep=0pt]
+			            \item \textbf{bonferroni} correction
+			                  with respect to number of SNPs
+			            \item \textbf{bonferroni\_cm} correction
+			                  with respect to number of centiMorgans across the genome
+			            \item \textbf{fdr\_bh} (\textit{Benjamini/Hochberg}) correction
+			                  with respect to number of SNPs
+		            \end{itemize}
+		      \item \textbf{unfilt}: Peaks are kept no matter if
+		            they contain $X_{\text{iR},s}$ hits or not
+	      \end{itemize}
+\end{itemize}
+
+
+My impression:
+\begin{itemize}[noitemsep, topsep=0pt]
+	\item Finding peaks via \textbf{iqr} method misses
+	      many known drug resistance markers
+	      (See Figure \ref{fig:std_vs_iqr_easa} and \ref{fig:std_vs_iqr_waf}).
+	      finding peaks via \textbf{std} method is more sensitive in empirical datasets
+	\item \textbf{fdr\_bh} is more sensitive to \textbf{bonferroni} or \textbf{bonferroni\_cm}
+	      (See Figure \ref{fig:xirs_correction_esea_1_hits} and
+	      \ref{fig:xirs_correction_waf_1_hits}).
+	\item The more \textit{num\_xirs} hits, the less sensitive
+	      (See Figure \ref{fig:xirs_hits_esea_m_fdr_bh}
+	      \ref{fig:xirs_hits_waf_m_fdr_bh}
+\end{itemize}
+
+\begin{figure}
+	\center
+	\includegraphics[width=0.8\textwidth]{imgs/std_vc_iqr_esea.pdf}
+	\caption{std vs iqr in ESEA unrelated}
+	\label{fig:std_vs_iqr_easa}
+\end{figure}
+
+\begin{figure}
+	\center
+	\includegraphics[width=0.8\textwidth]{imgs/std_vc_iqr_waf.pdf}
+	\caption{std vs iqr in WAF unrelated}
+	\label{fig:std_vs_iqr_waf}
+\end{figure}
+
+\begin{figure}
+	\center
+	\includegraphics[width=0.8\textwidth]{imgs/xirs_correction_esea_1_hits.pdf}
+	\caption{xirs correction methods (ESEA)}
+	\label{fig:xirs_correction_esea_1_hits}
+\end{figure}
+
+\begin{figure}
+	\center
+	\includegraphics[width=0.8\textwidth]{imgs/xirs_correction_waf_1_hits.pdf}
+	\caption{xirs correction methods (WAF)}
+	\label{fig:xirs_correction_waf_1_hits}
+\end{figure}
+
+\begin{figure}
+	\center
+	\includegraphics[width=0.8\textwidth]{imgs/xirs_hits_esea_m_fdr_bh.pdf}
+	\caption{xirs num hits (ESEA)}
+	\label{fig:xirs_hits_esea_m_fdr_bh}
+\end{figure}
+
+\begin{figure}
+	\center
+	\includegraphics[width=0.8\textwidth]{imgs/xirs_hits_waf_m_fdr_bh.pdf}
+	\caption{xirs num hits (WAF)}
+	\label{fig:xirs_hits_waf_m_fdr_bh}
+\end{figure}
+
+\end{document}
