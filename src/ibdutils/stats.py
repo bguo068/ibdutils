@@ -136,7 +136,8 @@ def get_ibd_status_matrix(ibd_df_chr: pd.DataFrame, pos_chr: np.ndarray) -> np.n
     start = np.searchsorted(pos, ibd.Start, side="left")
     end = np.searchsorted(pos, ibd.End, side="right")
 
-    ibd = pd.DataFrame({"Pair": (r * r - r) // 2 + c, "Start": start, "End": end})
+    ibd = pd.DataFrame({"Pair": (r * r - r) // 2 + c,
+                       "Start": start, "End": end})
 
     M = np.zeros(shape=(pos.size, ibd.Pair.max() + 1))
 
@@ -217,8 +218,7 @@ def calc_xirs(freq_all_df, ibd_all_df):
             - RawStatStd
             - Zscore
             - ChisqStat
-            - Pvalue: based on ChisqStat of a degree = 1
-            - NegLogP: -np.log10(pvalue)
+            - RawPvalue: based on ChisqStat of a degree = 1
     -------
 
     """
@@ -230,13 +230,16 @@ def calc_xirs(freq_all_df, ibd_all_df):
     df_list = []
     for chrno in ibd_all_df.Chromosome.unique():
         ibd_df_chr = ibd_all_df[lambda df: df.Chromosome == chrno]
-        pos_chr = freq_all_df.loc[lambda df: df.Chromosome == chrno, "Pos"].to_numpy()
-        frq_chr = freq_all_df.loc[lambda df: df.Chromosome == chrno, "Freq"].to_numpy()
+        pos_chr = freq_all_df.loc[lambda df: df.Chromosome ==
+                                  chrno, "Pos"].to_numpy()
+        frq_chr = freq_all_df.loc[lambda df: df.Chromosome ==
+                                  chrno, "Freq"].to_numpy()
 
         M = get_ibd_status_matrix(ibd_df_chr, pos_chr)
         stats = calc_xirs_raw_stats_per_chr(M, frq_chr)
         df = pd.DataFrame(
-            {"Chromosome": chrno, "Pos": pos_chr, "Freq": frq_chr, "RawStat": stats}
+            {"Chromosome": chrno, "Pos": pos_chr,
+                "Freq": frq_chr, "RawStat": stats}
         )
         df_list.append(df)
     df = pd.concat(df_list, axis=0)
@@ -259,7 +262,8 @@ def calc_xirs(freq_all_df, ibd_all_df):
     bin_std.name = "RawStatStd"
     bin_std = bin_std.reset_index()
 
-    df = df.merge(bin_mean, how="left", on="Bin").merge(bin_std, how="left", on="Bin")
+    df = df.merge(bin_mean, how="left", on="Bin").merge(
+        bin_std, how="left", on="Bin")
 
     df = df.sort_values(["Chromosome", "Pos"])
     df["Zscore"] = (df.RawStat - df.RawStatMean) / df.RawStatStd
@@ -271,12 +275,6 @@ def calc_xirs(freq_all_df, ibd_all_df):
     # is the chisquare distributed test statistic for IBD sharing from
     # isoRelate at SNPs.
     df["ChisqStat"] = df.Zscore * df.Zscore
-    df["Pvalue"] = chi2.sf(df.ChisqStat, df=1)
-
-    # p = df.Pvalue.to_numpy()
-    # rank = np.argsort(p) + 1
-    # ntests = p.size
-    # df["AdjPvalue"] = p * ntests / rank
-    df["NegLogP"] = -np.log10(df.Pvalue)
+    df["RawPvalue"] = chi2.sf(df.ChisqStat, df=1)
 
     return df

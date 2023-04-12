@@ -12,11 +12,13 @@ from typing import List, Tuple, Union
 import allel
 import igraph
 import matplotlib.pyplot as plt
+import matplotlib.transforms as transforms
 import numpy as np
 import pandas as pd
 import pybedtools as pb
 import scipy.cluster.hierarchy as sch
 from sklearn.cluster import AgglomerativeClustering
+from statsmodels.stats.multitest import multipletests
 
 from ..stats import calc_xirs, get_afreq_from_vcf_files
 
@@ -588,6 +590,7 @@ class IBD:
         self._cov_df = None
         self._peaks_df = None
         self._peaks_df_bk = None
+        self.__peaks_df_bk_with_num_xirs_hits = None
         self._xirs_df = None
         self._flag_peaks_already_removed = False
 
@@ -905,8 +908,22 @@ class IBD:
 
         return within, outside
 
-    def plot_coverage(self, ax=None, label="", plot_proportions=True):
-        assert self._cov_df is not None
+    def plot_coverage(self, ax=None, label="", which='unfilt',
+                      plot_proportions=True, plot_peak_shade=True):
+        assert which in ['unfilt', 'xirsfilt']
+
+        if which == 'unfilt':
+            if self._xirs_df is None:
+                assert self._peaks_df is not None
+                peak_df = self._peaks_df.copy()
+            else:
+                peak_df = self._peaks_df_bk.copy()
+        elif which == 'xirsfilt':
+            assert self._peaks_df is not None
+            assert self._xirs_df is not None
+            peak_df = self._peaks_df.copy()
+        else:
+            raise NotImplementedError()
 
         if ax is None:
             _, ax = plt.subplots(figsize=(12, 3))
@@ -925,6 +942,18 @@ class IBD:
         ax.set_xticklabels(chr_names)
         ax.set_ylabel("IBD coverage")
 
+        # plot shadding
+        if plot_peak_shade:
+            for gwstart, gwend, median1, thres in peak_df[
+                ['GwStart', 'GwEnd', 'Median', 'Thres']
+            ].itertuples(index=None):
+                df = self._cov_df[
+                    lambda df:
+                        (df.GwStart >= gwstart) & (df.GwStart+1 <= gwend)
+                ].sort_values('GwStart')
+                ax.fill_between(df.GwStart, median1, df.Coverage,
+                                alpha=0.3, color='red')
+
         # chromosomes boundaries
         for x in chr_boundaries:
             ax.axvline(x, linestyle="--", color="grey")
@@ -942,16 +971,101 @@ class IBD:
 
         return ax
 
+    def plot_xirs(self, ax=None, label=""):
+
+        assert self._xirs_df is not None
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(12, 3))
+
+        # shortcuts
+        chr_boundaries = self._genome.get_chromosome_boundaries()
+        chr_centers = self._genome._chr_df["GwChromCenter"].to_numpy()
+        chr_names = self._genome._chr_df["Chromosome"].to_numpy()
+
+        # plot xirs
+        xirs_df = self._xirs_df
+        ax.plot("GwPos", "NegLgPadj", linestyle='none', marker='.', color='red',
+                data=xirs_df[lambda df: df.Padj < 0.05], label=label)
+        ax.plot("GwPos", "NegLgPadj", linestyle='none', marker='.', color='black',
+                data=xirs_df[lambda df: df.Padj >= 0.05])
+        ax.set_xticks(chr_centers)
+        ax.set_xticklabels(chr_names)
+        ax.set_ylabel("Xir,s -lg(padj)")
+
+        # chromosomes boundaries
+        for x in chr_boundaries:
+            ax.axvline(x, linestyle="--", color="grey")
+
+        # allow show label in legend
+        if label != "":
+            ax.legend()
+
+        return ax
+
+    def plot_drg_annotation(self, ax, plot_drg_label=True):
+        genome = self._genome
+        if genome._drg_df is None:
+            return
+
+        drg_df = genome._drg_df[lambda df: df.Comment.isin(
+            ["drg", "sex"])].copy()
+        drg_center = (drg_df.Start + drg_df.End) // 2
+        drg_gw_center = genome.get_genome_wide_coords(
+            drg_df.Chromosome.values, drg_center
+        )
+        drg_label = drg_df.Name.values
+        fig = plt.gcf()
+
+        if not plot_drg_label:
+            drg_label = []
+        ax_ty = ax.twiny()
+
+        for x in drg_gw_center:
+            ax_ty.axvline(x, color="grey", linestyle="--", alpha=0.2)
+
+        ax_ty.set_xlim(ax.get_xlim())
+        ax_ty.set_xticks(drg_gw_center)
+        labels = ax_ty.set_xticklabels(
+            drg_label,
+            rotation=45,
+            rotation_mode="anchor",
+            va="bottom",
+            ha="left",
+            fontsize=6,
+        )
+        dx, dy = 3 / 72.0, 0 / 72.0
+        left_offset = transforms.ScaledTranslation(
+            -dx, dy, fig.dpi_scale_trans)
+        right_offset = transforms.ScaledTranslation(
+            2 * dx, dy, fig.dpi_scale_trans)
+        for t in labels:
+            if t.get_text() == "ap2-g*":
+                t.set_transform(ax.get_xaxis_transform() + right_offset)
+            elif t.get_text() == "gch1":
+                t.set_transform(ax.get_xaxis_transform() + left_offset)
+            else:
+                pass
+
     def calc_ibd_length_in_cm(self) -> np.ndarray:
         return self._genome._gmap.get_length_in_cm(
             self._df.Chromosome.values, self._df.Start.values, self._df.End.values
         )
 
-    @staticmethod
-    def _find_peaks(cov_df: pd.DataFrame, chr_df):
-        """find peaks in IBD coverage profile using bedtools/pybedtools where peaks
-        are defined by regions > chromosome Q3 + 1.5 IQR with extension to
-        nearest point crossing the median line"""
+    @ staticmethod
+    def _find_peaks(cov_df: pd.DataFrame, chr_df, method='std'):
+        """find peaks in IBD coverage profile using bedtools/pybedtools
+
+        When method == 'iqr', peaks are defined by regions > chromosome Q3 +
+        1.5 IQR with extension to nearest point crossing the median line
+
+        When method == 'std', peaks are defined by regions > 5% trimmed mean +
+        2 x 5% trimmed standard deviation with extension to nearest point
+        crossing the median line
+        """
+
+        assert method in ['iqr', 'std']
+
         peaks_lst = []
         stats = {"Chromosome": [], "Median": [], "Thres": []}
         for chromosome, chrom_cov_df in cov_df.groupby("Chromosome"):
@@ -960,18 +1074,26 @@ class IBD:
             assert np.all((s[1:-1] - s[:-2]) == (s[1:-1] - s[:-2]).mean())
             step = s[1] - s[0]
             # threshold
-            q25, q50, q75 = np.quantile(
-                chrom_cov_df.Coverage, q=[0.25, 0.5, 0.75])
+            q5, q25, q50, q75, q95 = np.quantile(
+                chrom_cov_df.Coverage, q=[0.05, 0.25, 0.5, 0.75, 0.95])
             iqr = q75 - q25
-            # trim_mean = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].mean()
-            # trim_std = chrom_cov_df.Coverage[lambda s: (s >= q5) & (s < q95)].std()
+            trim_mean = chrom_cov_df.Coverage[lambda s: (
+                s >= q5) & (s < q95)].mean()
+            trim_std = chrom_cov_df.Coverage[lambda s: (
+                s >= q5) & (s < q95)].std()
+
+            if method == 'iqr':
+                thres = q75 + 1.5 * iqr
+            elif method == 'std':
+                thres = trim_mean + 2 * trim_std
+            else:
+                raise NotImplementedError
+
             # core regions
             core_df = chrom_cov_df.loc[
                 lambda x: (
                     x.Coverage
-                    > q75 + 1.5 * iqr
-                    # x.Coverage
-                    # > trim_mean + 2 * trim_std
+                    > thres
                 )
             ]
             core_bed = pb.BedTool.from_dataframe(
@@ -985,11 +1107,11 @@ class IBD:
                 core_bed, wa=True).merge(d=step).to_dataframe()
             if peaks.shape[0] > 0:
                 peaks["Median"] = q50
-                peaks["Thres"] = q75 + 1.5 * iqr
+                peaks["Thres"] = thres
             peaks_lst.append(peaks)
             stats["Chromosome"].append(chromosome)
             stats["Median"].append(q50)
-            stats["Thres"].append(q75 + 1.5 * iqr)
+            stats["Thres"].append(thres)
         peaks_df = pd.concat(peaks_lst)
         if peaks_df.shape[0] > 0:
             peaks_df.columns = ["Chromosome",
@@ -1005,14 +1127,17 @@ class IBD:
             chr_df_tmp, how="left", on="Chromosome")
         return peaks_df, stats_df
 
-    def find_peaks(self):
+    def find_peaks(self, method='std'):
+        """method can be 'iqr' or 'std'
+        see _find_peaks method
+        """
         assert self._genome is not None
         assert self._cov_df is not None
         chr_df = self._genome._chr_df
         cov_df_4col = self._cov_df[["Chromosome", "Start", "End", "Coverage"]]
-        self._peaks_df, _ = IBD._find_peaks(cov_df_4col, chr_df)
+        self._peaks_df, _ = IBD._find_peaks(cov_df_4col, chr_df, method=method)
 
-    def filter_peaks_by_xirs(self, xirs_df: pd.DataFrame, min_xirs_hits=3):
+    def filter_peaks_by_xirs(self, xirs_df: pd.DataFrame, min_xirs_hits=3, alpha=0.05):
         """
         Filter peaks by checking if the peaks contain a SNP that has a
         sigficant XiR,s value (under positive selection). Significance is
@@ -1040,8 +1165,7 @@ class IBD:
         self._peaks_df_bk = self._peaks_df.copy()
         out_peaks_df = None
 
-        # Bonferroni correction and hits
-        sel = xirs_df["Pvalue"] < 0.05 / xirs_df.shape[0]
+        sel = xirs_df["Padj"] < 0.05
         sig_df = xirs_df.loc[sel, ["Chromosome", "Pos"]].copy()
 
         # if has no peaks (outlier)
@@ -1064,7 +1188,8 @@ class IBD:
         sig_bed = pb.BedTool.from_dataframe(sig_df)
 
         # make bed for peaks
-        peak_bed = pb.BedTool.from_dataframe(self._peaks_df[["Chromosome", "Start", "End"]])
+        peak_bed = pb.BedTool.from_dataframe(
+            self._peaks_df[["Chromosome", "Start", "End"]])
 
         # intersecting
         filt_df = peak_bed.intersect(sig_bed, wa=True).to_dataframe()
@@ -1097,7 +1222,8 @@ class IBD:
         self.__peaks_df_bk_with_num_xirs_hits = out_peaks_df
 
         # filter peaks by NumXirsHits
-        filt_peaks_df = out_peaks_df[lambda df: df.NumXirsHits >= min_xirs_hits].copy()
+        filt_peaks_df = out_peaks_df[lambda df: df.NumXirsHits >= min_xirs_hits].copy(
+        )
         self._peaks_df = filt_peaks_df
         return out_peaks_df
 
@@ -1118,7 +1244,7 @@ class IBD:
 
         self._df = ibd.copy()
 
-    @staticmethod
+    @ staticmethod
     def _extract_intervals(ibd_in: pd.DataFrame, intervals_df):
         ibd = ibd_in.copy()
 
@@ -1162,7 +1288,7 @@ class IBD:
         # ibd_rm_peaks = ibd_rm_peaks[~too_short].copy()
         return ibd_extract
 
-    @staticmethod
+    @ staticmethod
     def _remove_intervals(ibd_in: pd.DataFrame, intervals_df):
         ibd = ibd_in.copy()
 
@@ -1224,7 +1350,7 @@ class IBD:
         self._flag_peaks_already_removed = True
 
     # TODO: test the copied code
-    @staticmethod
+    @ staticmethod
     def _split_chromosomes_at_peaks(ibd_in, peaks_df, chrlen_df):
 
         ibd = ibd_in.copy()
@@ -1378,7 +1504,7 @@ class IBD:
         df = pd.DataFrame(M, columns=names, index=names)
         return df
 
-    @staticmethod
+    @ staticmethod
     def clust_ibd_matrix(ibd_mat_df: pd.DataFrame):
 
         names = ibd_mat_df.columns.sort_values().values.copy()
@@ -1425,7 +1551,7 @@ class IBD:
 
     # using igraph to remove highly one of the highly related sample pairs
     # get highly related samples ( not used )
-    @staticmethod
+    @ staticmethod
     def _get_highly_related_samples_to_remove(M, ids, threshold=625):
         """
         Generate a list of sample ids to remove in order to get rid of high relatedness
@@ -1494,6 +1620,8 @@ class IBD:
         vcf_fn_lst: List[str],
         rm_vcf_sample_name_suffix: bool = False,
         min_maf: float = 0.01,
+        multitest_correction="fdr_bh",
+        only_adj_pvalues=False,
     ) -> pd.DataFrame:
         """
         Calculate XiR,s for a given IBD object and related VCF file list. It a wrapper
@@ -1512,6 +1640,16 @@ class IBD:
             If true, remove `~.*$` from vcf sample names
         - `min_maf`: float
             Only SNPs with maf > `min_maf` will be considered for XiR,s calculation.
+        - `multitest_correction`, str, default "bh"
+            multiple test correction methods:
+            - 'bonferroni': Bonferroni correction by number of snps
+            - 'bonferroni_cm': Bonferroni correction by number of snps
+            - 'fdr_bh' : Benjamini/Hochberg (non-negative correlation)
+            - 'none' : no adjustment, equals to raw p values
+        - `only_adj_pvalues`: boolean , default: False.
+            useful when xirs_df is already calculated and just want to
+            update p value correction methods
+
 
         Returns
         -------
@@ -1525,103 +1663,89 @@ class IBD:
                 - RawStatStd
                 - Zscore
                 - ChisqStat
-                - Pvalue: based on ChisqStat of a degree = 1
-                - NegLogP: -np.log10(pvalue)
+                - RawPvalue: based on ChisqStat of a degree = 1
+                - Padj: adjusted pvalues
+                - NegLgPadj: -np.log10(Padj)
             See `calc_xirs`.
 
         Examples
         --------
 
-        ### 1. With simulated data.
-
-        ```python
-            genome = Genome.get_genome("simu_14chr_100cm")
-            ibdobj = IBD(genome)
-            ibd_fn_lst = [
-                f"10993_{i}_tskibd.ibd" for i in range(1, 15)
-            ]
-            ibdobj.read_ibd(ibd_fn_lst)
-
-            vcf_fn_lst = [
-                f"0993_{i}.vcf.gz" for i in range(1, 15)
-            ]
-
-            calc_xirs_from_ibd_obj(ibdobj, vcf_fn_lst, min_maf=0.01)
-
-        ```
-
-        ### 2. With empirical data.
-
-        ```python
-            genome = Genome.get_genome("Pf3D7")
-            ibdobj = IBD(genome)
-            ibd_fn_lst = [
-                f"xxx/ESEA_{i}_hmmibd.ibd"
-                for i in range(1, 15)
-            ]
-            ibdobj.read_ibd(ibd_fn_lst, rm_sample_name_suffix=True)
-            M = ibdobj.make_ibd_matrix()
-            unrel_samples = ibdobj.get_unrelated_samples(M)
-            ibdobj.subset_ibd_by_samples(unrel_samples)
-            ibdobj.filter_ibd_by_length(min_seg_cm=4)
-            ibdobj.convert_to_heterozygous_diploids()
-            ibdobj.flatten_diploid_ibd()
-            ibdobj._df
-
-            vcf_fn_lst = [
-                "xxx/ESEA_imputed.vcf.gz"
-            ]
-
-            calc_xirs_from_ibd_obj(ibdobj, vcf_fn_lst, min_maf=0.01)
-
-
-        ```
         """
+        if not only_adj_pvalues:
+            samples = pd.Series(self.get_samples_shared_ibd())
 
-        samples = pd.Series(self.get_samples_shared_ibd())
+            if (
+                not pd.api.types.is_integer_dtype(samples)
+                and samples.str.contains("@").any()
+            ):
+                # flattened
+                tmp = self._df.Id1.str.split("@", expand=True)
+                s1 = set(tmp.iloc[:, 0])
+                s2 = set(tmp.iloc[:, 1])
+                tmp = self._df.Id2.str.split("@", expand=True)
+                s3 = set(tmp.iloc[:, 0])
+                s4 = set(tmp.iloc[:, 1])
+                haploid_samples = list(s1.union(s2).union(s3).union(s4))
+            else:
+                haploid_samples = samples
 
-        if (
-            not pd.api.types.is_integer_dtype(samples)
-            and samples.str.contains("@").any()
-        ):
-            # flattened
-            tmp = self._df.Id1.str.split("@", expand=True)
-            s1 = set(tmp.iloc[:, 0])
-            s2 = set(tmp.iloc[:, 1])
-            tmp = self._df.Id2.str.split("@", expand=True)
-            s3 = set(tmp.iloc[:, 0])
-            s4 = set(tmp.iloc[:, 1])
-            haploid_samples = list(s1.union(s2).union(s3).union(s4))
+            # use _ instead of samples to avoid the haploid_samples
+            # overwrite diploid sample names
+            frq_all_df, _ = get_afreq_from_vcf_files(
+                vcf_fn_lst,
+                fix_pf3d7_chrname=True,
+                fix_tsk_samplename=True,
+                rm_sample_name_suffix=rm_vcf_sample_name_suffix,
+                samples=haploid_samples,
+            )
+            frq_all_df = frq_all_df[
+                lambda df: (df.Freq >= min_maf) & (df.Freq <= 1 - min_maf)
+            ]
+
+            ibd_all = self._df.copy()
+
+            # encode sample as integer
+            ibd_all["Id1"] = pd.Categorical(
+                ibd_all.Id1, categories=samples).codes
+            ibd_all["Id2"] = pd.Categorical(
+                ibd_all.Id2, categories=samples).codes
+
+            df = calc_xirs(frq_all_df, ibd_all)
+            df = df.sort_values(["Chromosome", "Pos"])
+
+            # Annotate with genome_wide coordinate
+            df = (df.merge(self._genome._chr_df[['Chromosome', 'GwChromStart']],
+                           on='Chromosome', how='left')
+                  .assign(GwPos=lambda x: x.Pos + x.GwChromStart)
+                  .drop(labels='GwChromStart', axis=1)
+                  )
+
         else:
-            haploid_samples = samples
+            df = self._xirs_df.copy()
 
-        # use _ instead of samples to avoid the haploid_samples
-        # overwrite diploid sample names
-        frq_all_df, _ = get_afreq_from_vcf_files(
-            vcf_fn_lst,
-            fix_pf3d7_chrname=True,
-            fix_tsk_samplename=True,
-            rm_sample_name_suffix=rm_vcf_sample_name_suffix,
-            samples=haploid_samples,
-        )
-        frq_all_df = frq_all_df[
-            lambda df: (df.Freq >= min_maf) & (df.Freq <= 1 - min_maf)
-        ]
+        # adjust p values
+        if multitest_correction == 'bonferroni':
+            padj = multipletests(df.RawPvalue.to_numpy(),
+                                 method='bonferroni')[1]
+        elif multitest_correction == 'bonferroni_cm':
+            padj = df.RawPvalue.to_numpy().copy() * self._genome.get_genome_size_cm()
+            padj[padj > 1] = 1.0
+        elif multitest_correction == 'fdr_bh':
+            padj = multipletests(df.RawPvalue.to_numpy(), method='fdr_bh')[1]
+        elif multitest_correction == 'none':
+            padj = df.RawPvalue.to_numpy()
+        else:
+            raise NotImplementedError()
 
-        ibd_all = self._df.copy()
-
-        # encode sample as integer
-        ibd_all["Id1"] = pd.Categorical(ibd_all.Id1, categories=samples).codes
-        ibd_all["Id2"] = pd.Categorical(ibd_all.Id2, categories=samples).codes
-
-        df = calc_xirs(frq_all_df, ibd_all)
-        df = df.sort_values(["Chromosome", "Pos"])
+        df['Padj'] = padj
+        df['NegLgPadj'] = -np.log10(padj)
 
         self._xirs_df = df.copy()
 
         return df
 
-    @staticmethod
+    @ staticmethod
     def call_infomap_get_member_df(
         M: pd.DataFrame, meta, trials=500, seed=12345, transform=None
     ):
@@ -1701,7 +1825,7 @@ class IBD:
         with gzip.open(out_fn, "wb") as f:
             pickle.dump(self, f)
 
-    @staticmethod
+    @ staticmethod
     def pickle_load(in_fn) -> "IBD":
         assert Path(in_fn).exists()
         with gzip.open(in_fn, "rb") as f:
@@ -1996,7 +2120,7 @@ class IbdComparator:
         with gzip.open(ofn, "wb") as f:
             pickle.dump(self, f)
 
-    @staticmethod
+    @ staticmethod
     def pickle_load(ifs: str) -> "IbdComparator":
         with gzip.open(ifs, "rb") as f:
             self = pickle.load(f)
