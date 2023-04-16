@@ -590,7 +590,7 @@ class IBD:
         self._cov_df = None
         self._peaks_df = None
         self._peaks_df_bk = None
-        self.__peaks_df_bk_with_num_xirs_hits = None
+        self._peaks_df_bk_with_num_xirs_hits = None
         self._xirs_df = None
         self._flag_peaks_already_removed = False
 
@@ -679,6 +679,10 @@ class IBD:
         ibd["Start"] = ibd.Start.astype(int)
         ibd["End"] = ibd.End.astype(int)
 
+        # add Hap infomap
+        ibd["Hap1"] = 1
+        ibd["Hap2"] = 1
+
         # get unique sample series
         self._samples = pd.Series(
             np.unique(np.hstack([ibd.Id1.unique(), ibd.Id2.unique()]))
@@ -713,9 +717,9 @@ class IBD:
 
         # reassign Id/Hap values
         self._df["Id1"] = fake_samples[x // 2]
-        self._df["Hap1"] = x % 2
+        self._df["Hap1"] = x % 2 + 1
         self._df["Id2"] = fake_samples[y // 2]
-        self._df["Hap2"] = y % 2
+        self._df["Hap2"] = y % 2 + 1
 
         # make sure (Sample1, Hap1) not larger than (Sample2, Hap2). This is
         # important for merge/flattening step
@@ -763,6 +767,7 @@ class IBD:
             )
             # remove unnecessary columns
             self._df["Chromosome"] = fake_chromosome
+            self._df["Hap"] = self._df.Hap1 * 10 + self._df.Hap2
 
             # merge ibdsegments and revert FakeChromosome to 'Id1', 'Id2',
             # 'Chromosome' columns
@@ -770,17 +775,17 @@ class IBD:
             # make bed file: 3 column, sorted bed file
 
             bed_file = pb.BedTool.from_dataframe(
-                self._df[["Chromosome", "Start", "End"]].sort_values(
+                self._df[["Chromosome", "Start", "End", "Hap"]].sort_values(
                     ["Chromosome", "Start"]
                 )
             )
 
             # run pybedtools merge
-            merged = bed_file.merge()
+            merged = bed_file.merge(c="4,4", o="collapse,count")
 
             # read bed file and convert dataframe
             df = merged.to_dataframe()
-            df.columns = ["Chromosome", "Start", "End"]
+            df.columns = ["Chromosome", "Start", "End", "Haps", "HapCount"]
 
             # restore the id1/id2/chromosome from the fake chromosome columns
             df[["Id1", "Id2", "Chromosome"]] = df["Chromosome"].str.split(
@@ -789,8 +794,16 @@ class IBD:
             df["Id1"] = df["Id1"].astype(dtype_id1)
             df["Id2"] = df["Id2"].astype(dtype_id2)
             df["Chromosome"] = df["Chromosome"].astype(dtype_chr)
+            hap_int = df.Haps.astype(str).str.replace(
+                ",.*$", "", regex=True).astype(int)
+            df["Hap1"] = hap_int // 10
+            df["Hap2"] = hap_int % 10
+            is_merge = df.HapCount != 1
+            df.loc[is_merge, "Hap1"] = 0
+            df.loc[is_merge, "Hap2"] = 0
 
-            self._df = df[["Id1", "Id2", "Chromosome", "Start", "End"]]
+            self._df = df[["Id1", "Hap1", "Id2",  "Hap2",
+                           "Chromosome", "Start", "End"]]
 
         else:
             raise Exception(f"Method {method} not implemented")
@@ -943,7 +956,7 @@ class IBD:
         ax.set_ylabel("IBD coverage")
 
         # plot shadding
-        if plot_peak_shade and (peak_df is not None) and (peak_df.shape[0] > 0):
+        if plot_peak_shade:
             for gwstart, gwend, median1, thres in peak_df[
                 ['GwStart', 'GwEnd', 'Median', 'Thres']
             ].itertuples(index=None):
@@ -1252,9 +1265,11 @@ class IBD:
         id1_dtype = ibd["Id1"].dtype
         id2_dytpe = ibd["Id2"].dtype
         chr_dtype = ibd["Chromosome"].dtype
+        hap1_dtype = ibd["Hap1"].dtype
+        hap2_dtype = ibd["Hap2"].dtype
 
         ibd["Info"] = ibd.Id1.astype(str).str.cat(
-            ibd[["Id2", "Chromosome"]].astype(str), sep=":"
+            ibd[["Id2", "Hap1", "Hap2"]].astype(str), sep=":"
         )
         ibd["Score"] = 1
         ibd["Strand"] = "*"
@@ -1273,8 +1288,8 @@ class IBD:
             intervals_bed, sorted=True).to_dataframe()
         ibd_extract.columns = ["Chromosome", "Start",
                                "End", "Name", "Score", "Strand"]
-        ibd_extract[["Id1", "Id2"]] = (
-            ibd_extract["Name"].str.split(":", expand=True).iloc[:, :2]
+        ibd_extract[["Id1", "Id2", "Hap1", "Hap2"]] = (
+            ibd_extract["Name"].str.split(":", expand=True)
         )
         ibd_extract = ibd_extract[["Id1", "Id2", "Chromosome", "Start", "End"]]
 
@@ -1282,6 +1297,8 @@ class IBD:
         ibd_extract["Id1"] = ibd_extract["Id1"].astype(id1_dtype)
         ibd_extract["Id2"] = ibd_extract["Id2"].astype(id2_dytpe)
         ibd_extract["Chromosome"] = ibd_extract["Chromosome"].astype(chr_dtype)
+        ibd_extract["Hap1"] = ibd_extract["Hap1"].astype(hap1_dtype)
+        ibd_extract["Hap2"] = ibd_extract["Hap2"].astype(hap2_dtype)
 
         # filter short segment after removing
         # too_short = ibd_rm_peaks.End - ibd_rm_peaks.Start < 2 * bp_per_cm
@@ -1299,9 +1316,11 @@ class IBD:
         id1_dtype = ibd["Id1"].dtype
         id2_dytpe = ibd["Id2"].dtype
         chr_dtype = ibd["Chromosome"].dtype
+        hap1_dtype = ibd["Hap1"].dtype
+        hap2_dtype = ibd["Hap2"].dtype
 
         ibd["Info"] = ibd.Id1.astype(str).str.cat(
-            ibd[["Id2", "Chromosome"]].astype(str), sep=":"
+            ibd[["Id2", "Hap1", "Hap2"]].astype(str), sep=":"
         )
         ibd["Score"] = 1
         ibd["Strand"] = "*"
@@ -1319,17 +1338,19 @@ class IBD:
         ibd_subtract = ibd_bed.subtract(intervals_bed).to_dataframe()
         ibd_subtract.columns = ["Chromosome",
                                 "Start", "End", "Name", "Score", "Strand"]
-        ibd_subtract[["Id1", "Id2"]] = (
-            ibd_subtract["Name"].str.split(":", expand=True).iloc[:, :2]
+        ibd_subtract[["Id1", "Id2", "Hap1", "Hap2"]] = (
+            ibd_subtract["Name"].str.split(":", expand=True)
         )
         ibd_subtract = ibd_subtract[[
-            "Id1", "Id2", "Chromosome", "Start", "End"]]
+            "Id1", "Hap1", "Id2", "Hap2", "Chromosome", "Start", "End"]]
 
         # resume datatypes
         ibd_subtract["Id1"] = ibd_subtract["Id1"].astype(id1_dtype)
         ibd_subtract["Id2"] = ibd_subtract["Id2"].astype(id2_dytpe)
         ibd_subtract["Chromosome"] = ibd_subtract["Chromosome"].astype(
             chr_dtype)
+        ibd_subtract["Hap1"] = ibd_subtract["Hap1"].astype(hap1_dtype)
+        ibd_subtract["Hap2"] = ibd_subtract["Hap2"].astype(hap2_dtype)
 
         # filter short segment after removing
         # too_short = ibd_rm_peaks.End - ibd_rm_peaks.Start < 2 * bp_per_cm
@@ -1402,8 +1423,14 @@ class IBD:
 
         @return a new IBD dataframe
         """
+
         assert self._flag_peaks_already_removed
         assert self._peaks_df is not None
+
+        # before changing the chromosome names and coordinates, calcuate IBD
+        # segment length
+        self._df['Cm'] = self.calc_ibd_length_in_cm()
+
         return self._split_chromosomes_at_peaks(
             self._df, self._peaks_df, self._genome._chr_df
         )
@@ -1807,12 +1834,17 @@ class IBD:
         new_ibd = IBD()
         new_ibd._df = deepcopy(self._df)
         new_ibd._ibd_format = deepcopy(self._ibd_format)
+        new_ibd._samples = deepcopy(self._samples)
         new_ibd._genome = deepcopy(self._genome)
         new_ibd._supported_ibd_formats = deepcopy(self._supported_ibd_formats)
         new_ibd._label = deepcopy(new_label)
         new_ibd._cov_df = deepcopy(self._cov_df)
-        new_ibd._samples = deepcopy(self._samples)
         new_ibd._peaks_df = deepcopy(self._peaks_df)
+        new_ibd._peaks_df_bk = deepcopy(self._peaks_df_bk)
+        new_ibd._peaks_df_bk_with_num_xirs_hits = deepcopy(
+                self._peaks_df_bk_with_num_xirs_hits)
+        new_ibd._xirs_df = deepcopy(self._xirs_df)
+        new_ibd._flag_peaks_already_removed = self._flag_peaks_already_removed
 
         return new_ibd
 

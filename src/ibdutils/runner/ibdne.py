@@ -29,24 +29,22 @@ class IbdNeRunner:
         for ibdne called on peak-removed ibd,
         cut_and_split_ibd should be called before this method
         """
-        # add Hap1, Hap2, cM columns
-        self.ibd._df["Hap1"] = 0
-        self.ibd._df["Hap2"] = 0
 
-        # TODO: in the cut_and_split_ibd method, the genome is not updated;
-        # use constant rate to get around this for now.
-        # self.ibd._df["Cm"] = self.ibd.calc_ibd_length_in_cm()
-        self.ibd._df["Cm"] = (self.ibd._df["End"] - self.ibd._df["Start"]) / bp_per_cm
+        # add Hap1, Hap2 columns
+        if "Hap1" not in self.ibd._df.columns:
+            self.ibd._df["Hap1"] = 0
+        if "Hap2" not in self.ibd._df.columns:
+            self.ibd._df["Hap2"] = 0
+        if "Cm" not in self.ibd._df.columns:
+            # NOTE: for rmpeaks groups, this has to be called before cut_and_split_ibd
+            # code has been added to ensure this see `IBD.cut_and_split_ibd` method
+            self.ibd._df["Cm"] = self.ibd.calc_ibd_length_in_cm()
 
         # write xx.ibd.gz file
         col_order = ["Id1", "Hap1", "Id2", "Hap2", "Chromosome", "Start", "End", "Cm"]
         self.ibd._df[col_order].to_csv(
             self.input_ibd_fn, sep="\t", index=None, header=None, compression="gzip"
         )
-
-        # TODO: IBD.cut_and_split_ibd method should generate a new genetic map object
-        # For now just use bp_per_cm to make the a plink map file
-        # write map file
 
         """
         Chromosome code. PLINK 1.9 also permits contig names here, but most older programs do not.
