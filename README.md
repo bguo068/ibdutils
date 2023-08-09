@@ -44,9 +44,11 @@ genes, multigene family)
 
 The package can be easily installed via `pip`:
 ```sh
-git clone git@github.com:bguo068/ibdutils.git
+git clone https://github.com/bguo068/ibdutils.git
 cd ibdutils
 # optional: git checkout [specific version/branch/commit]
+# Some pip version are unknow to have issue, work around:
+# use a conda environment with python=3.10 specified
 pip install .
 ```
 
