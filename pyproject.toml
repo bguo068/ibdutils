@@ -23,6 +23,7 @@ dependencies = [
   'igraph',
   'scikit-learn',
   'scikit-allel',
+  'statsmodels',
   #"HapNe @ git+ssh://git@github.com/bguo068/HapNe",
 ]
 classifiers = [
