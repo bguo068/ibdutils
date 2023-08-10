@@ -39,10 +39,25 @@ genes, multigene family)
 - Fast dump and load of IBD objects
 
 
+# System requirement and software environment
+
+This package has been tested on MacOS and Linux operating systems. Software
+dependencies are specified in the `pyproject.toml` file. These dependencies will
+be automatically installed when this package is installed via `pip`.
+
+The specific versions of the software dependencies for `ibdutils` are left blank,
+so they are more flexible and will not conflict with other software environments,
+such as the ones used for `posseleff_simulations` and `posseleff_empirical`.
+In fact, `ibdutils` is part of the Conda environments of the
+`posseleff_simulations` and `posseleff_empirical` pipelines and is known to work
+as expected.
+
 
 ## Installation
 
-The package can be easily installed via `pip`:
+The package can be easily installed via `pip` within an existing python environment or
+a newly created Conda environment, such as python=3.10. Installation time can be
+as short as 30 seconds.
 ```sh
 git clone https://github.com/bguo068/ibdutils.git
 cd ibdutils
@@ -52,7 +67,7 @@ cd ibdutils
 pip install .
 ```
 
-## Usage examples
+## Usage examples or tests
 
 0. Prepare input data
 ```sh
