@@ -933,7 +933,7 @@ class IBD:
         n_pairs = n_samples * (n_samples - 1) / 2
 
         # plot coverage
-        cov_df = self._cov_df[lambda df: df.Coverage > 0]  # omit zeros
+        cov_df = self._cov_df # [lambda df: df.Coverage > 0]  # omit zeros
         ax.plot("GwStart", "Coverage", data=cov_df, label=label)
         ax.set_xticks(chr_centers)
         ax.set_xticklabels(chr_names)
