@@ -19,6 +19,7 @@ import pybedtools as pb
 import scipy.cluster.hierarchy as sch
 from sklearn.cluster import AgglomerativeClustering
 from statsmodels.stats.multitest import multipletests
+from scipy.stats import chi2
 
 from ..stats import calc_xirs, get_afreq_from_vcf_files
 
@@ -578,6 +579,7 @@ class IBD:
         self._peaks_df_bk_with_num_xirs_hits = None
         self._xirs_df = None
         self._flag_peaks_already_removed = False
+        self._ihs_df = None
 
     def set_genome(self, genome: Genome):
         self._genome = genome
@@ -919,6 +921,10 @@ class IBD:
             assert self._peaks_df is not None
             assert self._xirs_df is not None
             peak_df = self._peaks_df.copy()
+        elif which == "ihsfilt":
+            assert self._peaks_df is not None
+            assert self._ihs_df is not None
+            peak_df = self._peaks_df.copy()
         else:
             raise NotImplementedError()
 
@@ -933,7 +939,7 @@ class IBD:
         n_pairs = n_samples * (n_samples - 1) / 2
 
         # plot coverage
-        cov_df = self._cov_df # [lambda df: df.Coverage > 0]  # omit zeros
+        cov_df = self._cov_df  # [lambda df: df.Coverage > 0]  # omit zeros
         ax.plot("GwStart", "Coverage", data=cov_df, label=label)
         ax.set_xticks(chr_centers)
         ax.set_xticklabels(chr_names)
@@ -1746,6 +1752,123 @@ class IBD:
         self._xirs_df = df.copy()
 
         return df
+
+    def calc_ihs(
+        self,
+        vcf_list: List[str],
+        min_maf=0.01,
+        n_bins=50,
+        multitest_correction_method="fdr_bh",
+    ) -> pd.DataFrame:
+        """
+        use standardized iHS for validating sites under selection
+
+        ## return
+            pandas DataFrame, df = pd.DataFrame(
+            {
+                "GwPos": pos,
+                "StdiHS": std_ihs_score,
+                "Padj": padj,
+            }
+        )
+
+        ## Note:
+            a member variable '_df_ihs' is updated with the return dataframe
+        """
+        nchrom = self._genome._chr_df.shape[0]
+        assert nchrom == len(
+            vcf_list
+        ), "the number vcf files should be equal to the number of chromosomo as indicated by ibd._genome._chr_df"
+
+        # load each vcf individually and calculate ihs (unormalized score)
+        gw_pos_lst = []
+        ihs_score_lst = []
+        ac_lst = []
+        for i in range(1, nchrom + 1):
+            vcf_fn = vcf_list[i - 1]
+            data = allel.read_vcf(
+                vcf_fn,
+                alt_number=1,
+                fields=["calldata/GT", "variants/POS", "variants/CHROM"],
+            )
+            nsites, nsam, ploidy = data["calldata/GT"].shape
+
+            # filter out variants
+            gt = data["calldata/GT"].reshape(nsites, nsam * ploidy)
+            assert np.all(gt != -1), "ensure no missing genotype data"
+            ac = gt.sum(axis=1)
+            is_rare = (ac < nsam * 2 * min_maf) | (ac > nsam * 2 * (1 - min_maf))
+            gt = gt[~is_rare, :]
+            chrom = data["variants/CHROM"][~is_rare].astype(int)
+            pos = data["variants/POS"][~is_rare]
+            cm = self._genome._gmap.get_cm(chrom, pos)
+            # calculate iHS unstandard results
+            ihs_score = allel.ihs(gt, pos, cm, min_maf=0.01)
+
+            gw_pos = self._genome.get_genome_wide_coords(chrom, pos)
+            # store chr results
+            gw_pos_lst.append(gw_pos)
+            ihs_score_lst.append(ihs_score)
+            ac_lst.append(gt.sum(axis=1))
+
+        # merge data across chromosomes
+        pos = np.hstack(gw_pos_lst)
+        ac = np.hstack(ac_lst)
+        ihs_score = np.hstack(ihs_score_lst)
+
+        # standardized iHS
+        std_ihs_score, _ = allel.standardize_by_allele_count(
+            ihs_score, ac, n_bins=n_bins
+        )
+
+        # remove nan values
+        not_nan = ~np.isnan(std_ihs_score)
+        std_ihs_score = std_ihs_score[not_nan]
+        pos = pos[not_nan]
+        ac = ac[not_nan]
+
+        # calculate pvalues
+        x = std_ihs_score.copy()
+        raw_pval = 1 - chi2.cdf(x**2, df=1)
+        _, padj, _, _ = multipletests(
+            raw_pval, alpha=0.1, method=multitest_correction_method
+        )
+
+        # make a dataframe from the above results
+        df = pd.DataFrame(
+            {
+                "GwPos": pos,
+                "StdiHS": std_ihs_score,
+                "Padj": padj,
+            }
+        )
+        # save as a member variable
+        self._ihs_df = df
+        return df
+
+    def filter_peaks_by_ihs(self, min_ihs_hits=1, alpha=0.1):
+        """
+        Returns
+        -------
+            None,
+            self._peak_df will be modified if there are peaks not having
+            significant SNPs.
+        """
+        assert self._ihs_df is not None
+        self._peaks_df_bk = self._peaks_df.copy()
+        sig_ihs = self._ihs_df["Padj"] < alpha
+
+        num_hits = []
+        for gwstart, gwend in self._peaks_df[["GwStart", "GwEnd"]].itertuples(
+            index=None
+        ):
+            sel1 = self._ihs_df["GwPos"] >= gwstart
+            sel2 = self._ihs_df["GwPos"] <= gwend
+            peak_num_hits = (sel1 & sel2 & sig_ihs).sum()
+            num_hits.append(peak_num_hits)
+
+        self._peaks_df["NumHits"] = num_hits
+        self._peaks_df = self._peaks_df[lambda df: df.NumHits >= min_ihs_hits]
 
     @staticmethod
     def call_infomap_get_member_df(
