@@ -1755,7 +1755,7 @@ class IBD:
 
     def calc_ihs(
         self,
-        vcf_list: List[str],
+        vcf_fn_lst: List[str],
         min_maf=0.01,
         n_bins=50,
         multitest_correction_method="fdr_bh",
@@ -1777,7 +1777,7 @@ class IBD:
         """
         nchrom = self._genome._chr_df.shape[0]
         assert nchrom == len(
-            vcf_list
+            vcf_fn_lst
         ), "the number vcf files should be equal to the number of chromosomo as indicated by ibd._genome._chr_df"
 
         # load each vcf individually and calculate ihs (unormalized score)
@@ -1785,7 +1785,7 @@ class IBD:
         ihs_score_lst = []
         ac_lst = []
         for i in range(1, nchrom + 1):
-            vcf_fn = vcf_list[i - 1]
+            vcf_fn = vcf_fn_lst[i - 1]
             data = allel.read_vcf(
                 vcf_fn,
                 alt_number=1,
