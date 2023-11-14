@@ -1939,6 +1939,7 @@ class IBD:
             self._peaks_df_bk_with_num_xirs_hits
         )
         new_ibd._xirs_df = deepcopy(self._xirs_df)
+        new_ibd._ihs_df = deepcopy(self._ihs_df)
         new_ibd._flag_peaks_already_removed = self._flag_peaks_already_removed
 
         return new_ibd
