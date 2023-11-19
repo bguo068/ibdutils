@@ -909,7 +909,7 @@ class IBD:
         plot_proportions=True,
         plot_peak_shade=True,
     ):
-        assert which in ["unfilt", "xirsfilt"]
+        assert which in ["unfilt", "xirsfilt", "ihsfilt"]
 
         if which == "unfilt":
             if self._xirs_df is None:
