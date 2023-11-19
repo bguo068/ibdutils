@@ -17,9 +17,9 @@ import numpy as np
 import pandas as pd
 import pybedtools as pb
 import scipy.cluster.hierarchy as sch
+from scipy.stats import chi2
 from sklearn.cluster import AgglomerativeClustering
 from statsmodels.stats.multitest import multipletests
-from scipy.stats import chi2
 
 from ..stats import calc_xirs, get_afreq_from_vcf_files
 
@@ -908,6 +908,8 @@ class IBD:
         which="unfilt",
         plot_proportions=True,
         plot_peak_shade=True,
+        diploid_samples_with_ibd_in_haploid_level=False,
+        num_digits_in_proportion=1,
     ):
         assert which in ["unfilt", "xirsfilt", "ihsfilt"]
 
@@ -937,6 +939,8 @@ class IBD:
         chr_names = self._genome._chr_df["Chromosome"].to_numpy()
         n_samples = self.get_samples_shared_ibd().size
         n_pairs = n_samples * (n_samples - 1) / 2
+        if diploid_samples_with_ibd_in_haploid_level:
+            n_pairs = (2 * n_samples) * (2 * n_samples - 1) / 2
 
         # plot coverage
         cov_df = self._cov_df  # [lambda df: df.Coverage > 0]  # omit zeros
@@ -946,6 +950,7 @@ class IBD:
         ax.set_ylabel("IBD coverage")
 
         # plot shadding
+        print(peak_df, plot_peak_shade)
         if plot_peak_shade and peak_df.shape[0] > 0:
             for gwstart, gwend, median1, thres in peak_df[
                 ["GwStart", "GwEnd", "Median", "Thres"]
@@ -967,6 +972,8 @@ class IBD:
             ylim = ax.get_ylim()
             ax_twin.set_ylim(ylim[0] / n_pairs, ylim[1] / n_pairs)
             ax_twin.set_ylabel("IBD proportions")
+            formated_ticklabels = [f"{float(t):.2f}" for t in ax_twin.get_yticks()]
+            ax_twin.set_yticklabels(formated_ticklabels)
 
         # allow show label in legend
         if label != "":
@@ -1741,7 +1748,7 @@ class IBD:
             padj[padj > 1] = 1.0
         elif multitest_correction == "fdr_bh":
             padj = multipletests(df.RawPvalue.to_numpy(), method="fdr_bh")[1]
-        elif multitest_correction == "none":
+        elif multitest_correction == "none" or multitest_correction == None:
             padj = df.RawPvalue.to_numpy()
         else:
             raise NotImplementedError()
@@ -1758,7 +1765,8 @@ class IBD:
         vcf_fn_lst: List[str],
         min_maf=0.01,
         n_bins=50,
-        multitest_correction_method="fdr_bh",
+        alpha=0.05,
+        multitest_correction=None,
     ) -> pd.DataFrame:
         """
         use standardized iHS for validating sites under selection
@@ -1830,9 +1838,12 @@ class IBD:
         # calculate pvalues
         x = std_ihs_score.copy()
         raw_pval = 1 - chi2.cdf(x**2, df=1)
-        _, padj, _, _ = multipletests(
-            raw_pval, alpha=0.1, method=multitest_correction_method
-        )
+        if multitest_correction is None:
+            padj = raw_pval
+        else:
+            _, padj, _, _ = multipletests(
+                raw_pval, alpha=alpha, method=multitest_correction
+            )
 
         # make a dataframe from the above results
         df = pd.DataFrame(
@@ -1846,7 +1857,7 @@ class IBD:
         self._ihs_df = df
         return df
 
-    def filter_peaks_by_ihs(self, min_ihs_hits=1, alpha=0.1):
+    def filter_peaks_by_ihs(self, min_ihs_hits=1, alpha=0.05):
         """
         Returns
         -------
