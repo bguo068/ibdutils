@@ -950,7 +950,7 @@ class IBD:
         ax.set_ylabel("IBD coverage")
 
         # plot shadding
-        print(peak_df, plot_peak_shade)
+        # print(peak_df, plot_peak_shade)
         if plot_peak_shade and peak_df.shape[0] > 0:
             for gwstart, gwend, median1, thres in peak_df[
                 ["GwStart", "GwEnd", "Median", "Thres"]
