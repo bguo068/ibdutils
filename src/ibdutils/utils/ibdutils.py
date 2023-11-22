@@ -972,8 +972,8 @@ class IBD:
             ylim = ax.get_ylim()
             ax_twin.set_ylim(ylim[0] / n_pairs, ylim[1] / n_pairs)
             ax_twin.set_ylabel("IBD proportions")
-            formated_ticklabels = [f"{float(t):.2f}" for t in ax_twin.get_yticks()]
-            ax_twin.set_yticklabels(formated_ticklabels)
+            ax_twin.yaxis.set_major_formatter(
+                        lambda x, _pos: "{:.{}f}".format(x, num_digits_in_proportion))
 
         # allow show label in legend
         if label != "":
