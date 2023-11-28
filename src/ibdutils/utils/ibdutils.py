@@ -973,7 +973,8 @@ class IBD:
             ax_twin.set_ylim(ylim[0] / n_pairs, ylim[1] / n_pairs)
             ax_twin.set_ylabel("IBD proportions")
             ax_twin.yaxis.set_major_formatter(
-                        lambda x, _pos: "{:.{}f}".format(x, num_digits_in_proportion))
+                lambda x, _pos: "{:.{}f}".format(x, num_digits_in_proportion)
+            )
 
         # allow show label in legend
         if label != "":
@@ -1355,7 +1356,14 @@ class IBD:
         assert self._peaks_df is not None
         assert self._genome is not None
 
-        ibd = self._remove_intervals(self._df, self._peaks_df)
+        peaks = self._peaks_df.copy()
+
+        # only remove peaks of high impact to avoid fragmenting the chromosome due
+        # to many small peaks which could be noise
+        if "HighImpact" in peaks:
+            peaks = peaks[lambda df: df["HighImpact"]]
+
+        ibd = self._remove_intervals(self._df, peaks)
         cm = self._genome._gmap.get_length_in_cm(ibd.Chromosome, ibd.Start, ibd.End)
         if rm_short_seg:
             ibd = ibd[cm >= min_seg_cm]
@@ -1423,9 +1431,13 @@ class IBD:
         # segment length
         self._df["Cm"] = self.calc_ibd_length_in_cm()
 
-        return self._split_chromosomes_at_peaks(
-            self._df, self._peaks_df, self._genome._chr_df
-        )
+        # only consider peaks of high impact to avoid fragmenting the chromosome due
+        # to many small peaks which could be noise
+        peaks = self._peaks_df.copy()
+        if "HighImpact" in peaks:
+            peaks = peaks[lambda df: df["HighImpact"]]
+
+        return self._split_chromosomes_at_peaks(self._df, peaks, self._genome._chr_df)
 
     def make_ibd_matrix(
         self,
@@ -1857,7 +1869,7 @@ class IBD:
         self._ihs_df = df
         return df
 
-    def filter_peaks_by_ihs(self, min_ihs_hits=1, alpha=0.05):
+    def filter_peaks_by_ihs(self, min_ihs_hits=1, alpha=0.05, min_peak_impact=0.01):
         """
         Returns
         -------
@@ -1866,6 +1878,7 @@ class IBD:
             significant SNPs.
         """
         assert self._ihs_df is not None
+        self.annotate_peaks_with_impact_index()
         self._peaks_df_bk = self._peaks_df.copy()
         sig_ihs = self._ihs_df["Padj"] < alpha
 
@@ -1879,7 +1892,43 @@ class IBD:
             num_hits.append(peak_num_hits)
 
         self._peaks_df["NumHits"] = num_hits
+        self._peaks_df["HighImpact"] = False
+        self._peaks_df.loc[
+            lambda df: df["PeakImpactIndex"] >= min_peak_impact, "HighImpact"
+        ] = True
         self._peaks_df = self._peaks_df[lambda df: df.NumHits >= min_ihs_hits]
+
+    def annotate_peaks_with_impact_index(self):
+        # calculate avg IBD sharing excluding peak regions
+        cov_df = self._cov_df.copy()
+        cov_df["InPeak"] = False
+
+        if (self._peaks_df is not None) and (self._peaks_df.shape[0] > 0):
+            for gwstart, gwend in self._peaks_df[["GwStart", "GwEnd"]].itertuples(
+                index=None
+            ):
+                cov_df["InPeak"] |= (cov_df.GwStart < gwend) & (
+                    cov_df.GwStart >= gwstart
+                )
+
+        y = self._cov_df.Coverage
+        b = y[~cov_df.InPeak].mean()
+
+        # calculate peak impact index
+
+        total_points = y.shape[0]
+        if (self._peaks_df is not None) and (self._peaks_df.shape[0] > 0):
+            impact_indices = []
+            for gwstart, gwend in self._peaks_df[["GwStart", "GwEnd"]].itertuples(
+                index=None
+            ):
+                is_in_this_peak = (cov_df.GwStart < gwend) & (cov_df.GwStart >= gwstart)
+                n_points = is_in_this_peak.sum()
+
+                index = (y[is_in_this_peak].sum() - b * n_points) / (b * total_points)
+                impact_indices.append(index)
+            # update peaks_df
+            self._peaks_df["PeakImpactIndex"] = impact_indices
 
     @staticmethod
     def call_infomap_get_member_df(
