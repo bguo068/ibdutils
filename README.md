@@ -14,8 +14,7 @@ bioinformaticians working with IBD data.
 
 ### Selection Correction
 - Calculate and visualize IBD coverage over sampling sites
-- Calculate and visualize `Xir,s` statistics to scan for selection signals
-- Identify (via IBD coverage threholding method) and validate (via `Xir,s`
+- Identify (via IBD coverage threholding method) and validate (via `iHS`-based
 statistics) IBD peak regions
 - Remove IBD located within identified IBD peak regions for selection correction
 - Split genomes into contigs of non-zero IBD coverage, important for preparing
@@ -106,22 +105,15 @@ ibd.subset_ibd_by_samples(subset_samples=unrelated_samples)
 ibd.filter_ibd_by_time(min_tmrca=1.5)
 ibd.filter_ibd_by_length(min_seg_cm=ibdne_mincm)
 
-# calculate XiR,s (this step can be pretty slow)
-xirs_df = ibd.calc_xirs(vcf_fn_lst=sp_vcf_files, min_maf=0.01)
-
-# convert to heterzygous diploids (IBDNe works with diploid data)
-ibd.convert_to_heterozygous_diploids(remove_hbd=True)
-
-# flattening function can be used
-if ibdne_flatmeth != "none":
-    ibd.flatten_diploid_ibd(method=ibdne_flatmeth)
+# calculate iHS
+ibd.calc_ihs(vcf_fn_lst=sp_vcf_files, min_maf=0.01)
 
 # calculate IBD coverage and find peaks
 ibd.calc_ibd_cov()
 ibd.find_peaks()
 
-# only keep peaks that contain a xirs hit
-ibd.filter_peaks_by_xirs(xirs_df)
+# only keep peaks that contain a ihs hit
+ibd.filter_peaks_by_ihs()
 
 # save IBD before remove peaks
 # of_orig_ibdne_obj = f"{label_str}_orig.ibdne.ibdobj.gz"
@@ -188,9 +180,9 @@ ibd.subset_ibd_by_samples(subset_samples=unrelated_samples)
 ibd.calc_ibd_cov()
 ibd.find_peaks()
 
-# calculate XiR,s and filter peaks
-xirs_df = ibd.calc_xirs(vcf_fn_lst=mp_vcf_files, min_maf=0.01)
-ibd.filter_peaks_by_xirs(xirs_df)
+# calculate iHS and filter peaks
+ibd.calc_ihs(vcf_fn_lst=mp_vcf_files, min_maf=0.01)
+ibd.filter_peaks_by_ihs()
 
 # make a copy of the IBD object and remove IBD within peaks on the copy
 ibd2 = ibd.duplicate("rmpeak")
@@ -230,13 +222,21 @@ member_df2.Rank.value_counts().iloc[:6]
 
 ```
 
+More examples can be found for simulated and and emprical dataset:
+1. for simulated data:
+    - https://github.com/bguo068/posseleff_simulations/blob/main/bin/proc_dist_ne.py
+    - https://github.com/bguo068/posseleff_simulations/blob/main/bin/proc_infomap.py
+2. for emprical data:
+    - https://github.com/bguo068/posseleff_empirical/blob/main/bin/proc_dist_ne.py
+    - https://github.com/bguo068/posseleff_empirical/blob/main/bin/proc_infomap.py
+
 ## Caveats and Related Ongoing Work
 
 1. The documentation for each function or method is currently only partially
 complete.
 2. The existing implementation is based solely on Python. A separate
 implementation in Rust is in progress. The Rust version is expected to offer
-enhanced computational efficiency, particularly for the Xirs calculation,
+enhanced computational efficiency, particularly for 
 coverage calculation, and peak removal steps.
 
 ## Citation
@@ -251,11 +251,6 @@ https://doi.org/10.1101/2023.07.14.549114
 
 Other citations:
 
-- `Xir,s` statistics: 
-> Henden, L., Lee, S., Mueller, I., Barry, A., & Bahlo, M. (2018).
-Identity-by-descent analyses for measuring population dynamics and selection in
-recombining pathogens. PLoS genetics, 14(5), e1007279.
-https://doi.org/10.1371/journal.pgen.1007279
 - `IBDNe`
 > Browning, S. R., & Browning, B. L. (2015). Accurate Non-parametric Estimation
 of Recent Effective Population Size from Segments of Identity by Descent.
@@ -267,6 +262,15 @@ https://doi.org/10.1016/j.ajhg.2015.07.012
 networks reveal community structure. Proceedings of the National Academy of
 Sciences of the United States of America, 105(4), 1118–1123.
 https://doi.org/10.1073/pnas.0706851105
+
+- `iHS` statistics and calculation
+
+iHS calculation via scikit-allel: 
+> Miles, A. et al. cggh/scikit-allel: v1.3.7. (2023) doi:10.5281/ZENODO.8326460. 
+
+iHS statistics:
+> Voight, B. F., Kudaravalli, S., Wen, X. & Pritchard, J. K. A map of recent
+positive selection in the human genome. PLoS Biol. 4, e72 (2006).
 
 ##  Resources
 
