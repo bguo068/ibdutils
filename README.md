@@ -66,6 +66,25 @@ cd ibdutils
 pip install .
 ```
 
+**Note**: 
+- Installation of the dependency `pybedtools` may need c compilers and python3
+developer packages. So you need to have them installed before installing
+`ibdutils`.
+    - On Redhat-based systems, you might want to install `sudo dnf install
+    python3-devel gcc` package before you install ibdutils packages. On
+    Debian-based systems, you can install 
+    `sudo apt install python3-dev build-essential`. 
+    - If you don't have root previledge, you can use conda to install
+    `pybedtools` (or other packages that need compilation) by running 
+    `conda install pybedtools -c bioconda`. 
+- Alternatively, if you want a conda recipe to construct a full conda environment including `ibdutils`
+itself, you can
+```sh
+wget https://raw.githubusercontent.com/bguo068/posseleff_empirical/main/env.yaml
+conda env create -f env.yaml
+conda activate empirical
+```
+
 ## Usage examples or tests
 
 0. Prepare input data
@@ -73,6 +92,12 @@ pip install .
 #! /usr/bin/env bash
 tar xf testdata.tgz
 ```
+**Note** for preparing `*.ibd` files for your emprical analysis, the following
+columns "Ancestor", "Tmrca", and "HasMutation" are unknown, and can be set to 
+some values that would be compatible with downstream analysis, such as `Ancestor
+= 9999, Tmrca = 100, HasMutation = 0`. Please check the complete code used to
+prepare `ibd` files from hmmIBD output files in 
+[this script](https://github.com/bguo068/posseleff_empirical/blob/main/bin/call_ibd.py) 
 
 1. Example 1
 
@@ -172,6 +197,10 @@ ibd.read_ibd(ibd_fn_lst=mp_ibd_files)
 
 
 # remove highly relatedness samples
+# NOTE: for empirical analysis, you might want to remove some short IBD segments
+# and mask ibd matrix elements of low values by changing arguments of the
+# `make_ibd_matrix` method, e.g.:
+#  ibd.make_ibd_matrix(min_seg_cm=2, max_gw_ibd_cm=5.0)
 mat = ibd.make_ibd_matrix()
 unrelated_samples = ibd.get_unrelated_samples(ibdmat=mat)
 ibd.subset_ibd_by_samples(subset_samples=unrelated_samples)
@@ -241,13 +270,8 @@ coverage calculation, and peak removal steps.
 
 ## Citation
 
-If you find this tool useful, please cite our preprint:
-> Guo, B., Borda, V., Laboulaye, R., Spring, M. D., Wojnarski, M., Vesely, B.
-A., Silva, J. C., Waters, N. C., O'Connor, T. D., & Takala-Harrison, S. (2023).
-Strong Positive Selection Biases Identity-By-Descent-Based Inferences of Recent
-Demography and Population Structure in Plasmodium falciparum. bioRxiv : the
-preprint server for biology, 2023.07.14.549114.
-https://doi.org/10.1101/2023.07.14.549114
+If you find this tool useful, please cite our paper:
+> Guo, B., Borda, V., Laboulaye, R., Spring, M. D., Wojnarski, M., Vesely, B. A., Silva, J. C., Waters, N. C., O'Connor, T. D., & Takala-Harrison, S. (2023). Strong Positive Selection Biases Identity-By-Descent-Based Inferences of Recent Demography and Population Structure in Plasmodium falciparum. bioRxiv : the preprint server for biology, 2023.07.14.549114. https://doi.org/10.1101/2023.07.14.549114
 
 Other citations:
 
