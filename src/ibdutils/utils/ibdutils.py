@@ -598,7 +598,7 @@ class IBD:
         self._ibd_format: str = None
         self._samples: pd.Series = None
         self._genome: Genome = genome
-        self._supported_ibd_formats = ["treeibd"]
+        self._supported_ibd_formats = ["tskibd"]
         self._label = label
         self._cov_df = None
         self._peaks_df = None
@@ -615,7 +615,7 @@ class IBD:
         self,
         ibd_fn_lst: List[str],
         chromosome_lst: List[Union[str, int]] = None,
-        format: str = "treeibd",
+        format: str = "tskibd",
         column_name_map: dict = None,
         rm_sample_name_suffix: bool = False,
         samples: List[Union[str, int]] = None,
@@ -623,7 +623,7 @@ class IBD:
         """read ibd from different formats
         - ibd_fn_lst: a list of IBD files. If all IBD segments are in a single
           file, just specify a single-element list to this argument
-        - format: can be one of the following: 1. 'treeibd', 2. 'parquet'
+        - format: can be one of the following: 1. 'tskibd', 2. 'parquet'
         - samples: allow subsetting IBD by samples. If not None, only keep IBD
           shared between pairs within specified subset. If None, keep all IBD
           segments
@@ -637,7 +637,7 @@ class IBD:
             chromosome_lst = list(range(1, 1 + nchroms))
 
         # format
-        if format == "treeibd":
+        if format == "tskibd":
             self._ibd_format = "trueibd"
             ibd_lst = []
             for chromosome, ibd_fn in zip(chromosome_lst, ibd_fn_lst):
