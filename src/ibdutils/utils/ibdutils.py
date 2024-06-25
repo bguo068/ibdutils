@@ -1169,8 +1169,12 @@ class IBD:
         return peaks_df, stats_df
 
     def find_peaks(self, method="std"):
-        """method can be 'iqr' or 'std'
-        see _find_peaks method
+        """method can be 'iqr' or 'std' see _find_peaks method.
+
+        Note: ensure that `calc_ibd_cov` method is called before calling
+        this method as it relies on the calculated IBD coverage
+        information. Calling `calc_ibd_cov` will calcuate coverage and
+        save it as the `_cov_df` member variable of the IBD object.
         """
         assert self._genome is not None
         assert self._cov_df is not None
