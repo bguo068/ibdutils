@@ -264,6 +264,14 @@ class Genome:
         return [int(i) for i in s.split()]
 
     @staticmethod
+    def _get_pvp01_chrlen_lst():
+        s = """
+            1021664 956327 896704 1012024 1524814 1042791 1652210 1761288 
+            2237066 1548844 2131221 3182763 2093556 3153402
+            """
+        return [int(i) for i in s.split()]
+
+    @staticmethod
     def _get_annotation(label="drg"):
         if label == "drg":
             str_table = """
@@ -382,9 +390,9 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
     def get_genome(genome_model: str) -> "Genome":
         """[static function]:
         construct genome_model from predefined information.
-        @genome_model: can be one of "simu_14chr_100cm" and "Pf3D7" """
+        @genome_model: can be one of "simu_14chr_100cm", "Pf3D7" and "PvP01" """
 
-        assert genome_model in ["simu_14chr_100cm", "Pf3D7"]
+        assert genome_model in ["simu_14chr_100cm", "Pf3D7", "PvP01"]
         if genome_model == "simu_14chr_100cm":
             genome = Genome.get_genome_simple_simu(
                 r=0.01 / 15000, nchroms=14, seqlen_bp_chr=15000 * 100
@@ -401,6 +409,25 @@ PF3D7_1460900.1  arps10         14          2480440  2481916  drg"""
             chr_df["GwChromCenter"] = (chr_df.GwChromStart + chr_df.GwChromEnd) / 2
 
             drg_df = Genome._get_annotation()
+
+            gmap = GeneticMap.from_const_rate(
+                bp_per_cm=bp_per_cm, chrlen_cm_lst=chrlen_lst
+            )
+            genome = Genome(
+                chr_df, drg_df, bp_per_cm=bp_per_cm, gmap=gmap, label=genome_model
+            )
+        elif genome_model == "PvP01":
+            bp_per_cm = 15_000
+            chrlen_lst = Genome._get_pvp01_chrlen_lst()
+            nchroms = len(chrlen_lst)
+            chrnos = list(range(1, 1 + nchroms))
+
+            chr_df = pd.DataFrame({"Chromosome": chrnos, "ChromLength": chrlen_lst})
+            chr_df["GwChromEnd"] = chr_df.ChromLength.cumsum()
+            chr_df["GwChromStart"] = chr_df.GwChromEnd - chr_df.ChromLength
+            chr_df["GwChromCenter"] = (chr_df.GwChromStart + chr_df.GwChromEnd) / 2
+
+            drg_df = None
 
             gmap = GeneticMap.from_const_rate(
                 bp_per_cm=bp_per_cm, chrlen_cm_lst=chrlen_lst
@@ -1514,9 +1541,9 @@ class IBD:
 
             # make subpopulation level total ibd
             M = np.zeros(shape=(names.size, names.size), dtype=np.float64)
-            M[
-                ibd.Assignment1.cat.codes.values, ibd.Assignment2.cat.codes.values
-            ] = ibd.Cm.values
+            M[ibd.Assignment1.cat.codes.values, ibd.Assignment2.cat.codes.values] = (
+                ibd.Cm.values
+            )
             M = M + M.T
 
             # average and deal with the case where there is only sample in a cluster
