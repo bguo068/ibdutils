@@ -1163,6 +1163,18 @@ class IBD:
             peaks_df = peaks_df.merge(chr_df_tmp, how="left", on="Chromosome")
             peaks_df["GwStart"] = peaks_df.Start + peaks_df.GwChromStart
             peaks_df["GwEnd"] = peaks_df.End + peaks_df.GwChromStart
+        else:
+            peaks_df = pd.DataFrame(
+                {
+                    "Chromosome": [],
+                    "Start": [],
+                    "End": [],
+                    "Median": [],
+                    "Thres": [],
+                    "GwStart": [],
+                    "GwEnd": [],
+                }
+            )
         # stats
         chr_df_tmp = chr_df[["Chromosome", "GwChromStart", "GwChromEnd"]]
         stats_df = pd.DataFrame(stats).merge(chr_df_tmp, how="left", on="Chromosome")
