@@ -271,7 +271,10 @@ coverage calculation, and peak removal steps.
 ## Citation
 
 If you find this tool useful, please cite our paper:
-> Guo, B., Borda, V., Laboulaye, R., Spring, M. D., Wojnarski, M., Vesely, B. A., Silva, J. C., Waters, N. C., O'Connor, T. D., & Takala-Harrison, S. (2023). Strong Positive Selection Biases Identity-By-Descent-Based Inferences of Recent Demography and Population Structure in Plasmodium falciparum. bioRxiv : the preprint server for biology, 2023.07.14.549114. https://doi.org/10.1101/2023.07.14.549114
+> Guo, B., Borda, V., Laboulaye, R. et al. Strong positive selection biases
+identity-by-descent-based inferences of recent demography and population
+structure in Plasmodium falciparum. Nat Commun 15, 2499 (2024).
+https://doi.org/10.1038/s41467-024-46659-0
 
 Other citations:
 
