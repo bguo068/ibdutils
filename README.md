@@ -141,7 +141,9 @@ ibd.find_peaks()
 ibd.filter_peaks_by_ihs()
 
 # plot IBD coverage with peaks marked with red shading
-ibd.plot_coverage(which="ihsfilt")
+ax = ibd.plot_coverage(which="ihsfilt")
+fig = ax.get_figure()
+fig.savefig("cov.png")
 
 # save IBD before remove peaks
 # of_orig_ibdne_obj = f"{label_str}_orig.ibdne.ibdobj.gz"
@@ -186,6 +188,9 @@ ibdne_runner2.run(dry_run=True)
 # This generate three files *.ibd.gz/*.map/*.sh for running IBDNe
 
 ```
+
+`cov.png`
+![Example coverage plot](cov.png)
 
 2. Example 2
 ```py
