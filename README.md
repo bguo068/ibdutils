@@ -140,14 +140,38 @@ ibd.find_peaks()
 # only keep peaks that contain a ihs hit
 ibd.filter_peaks_by_ihs()
 
+# plot IBD coverage with peaks marked with red shading
+ibd.plot_coverage(which="ihsfilt")
+
 # save IBD before remove peaks
 # of_orig_ibdne_obj = f"{label_str}_orig.ibdne.ibdobj.gz"
 # ibd.pickle_dump(of_orig_ibdne_obj)
+
+# saved ibd.obj file can be loaded by
+# ibd = ibdutils.IBD.pickle_load("xxx.ibd.obj.gz")
+
+# USEFUL information saved in the IBD object:
+ibd._df  # IBD segment dataframe
+ibd._cov_df  # IBD coverage dataframe
+ibd._peaks_df  # IBD peaks and annotations
 
 # remove peaks
 ibd2 = ibd.duplicate(f"{label_str}_rmpeaks")
 ibd2.remove_peaks()
 ibd2._df = ibd2.cut_and_split_ibd()
+
+# USEFUL information saved in the IBD object:
+# IBD segment dataframe after peak removal
+ibd2._df
+
+# IBD coverage dataframe. Note this is not updated by `remove_peaks()` so now it
+# still reflects coverage before peak removal; if needed, you can call
+# `calc_ibd_cov()` to update _cov_df.
+ibd2._cov_df
+
+# IBD peaks and annotations. Note this is not updated by `remove_peaks()` so it
+# still reflects peaks before peak removal)
+ibd2._peaks_df
 
 # save IBD after remove peaks
 # of_rmpeaks_ibdne_obj = f"{label_str}_rmpeaks.ibdne.ibdobj.gz"
@@ -213,12 +237,35 @@ ibd.find_peaks()
 ibd.calc_ihs(vcf_fn_lst=mp_vcf_files, min_maf=0.01)
 ibd.filter_peaks_by_ihs()
 
+# plot IBD coverage with peaks marked with red shading
+ibd.plot_coverage(which="ihsfilt")
+
+# USEFUL information saved in the IBD object:
+ibd._df  # IBD segment dataframe
+ibd._cov_df  # IBD coverage dataframe
+ibd._peaks_df  # IBD peaks and annotations
+
 # make a copy of the IBD object and remove IBD within peaks on the copy
 ibd2 = ibd.duplicate("rmpeak")
 ibd2.remove_peaks()
 
+# USEFUL information saved in the IBD object:
+# IBD segment dataframe after peak removal
+ibd2._df
+
+# IBD coverage dataframe. Note this is not updated by `remove_peaks()` so now it
+# still reflects coverage before peak removal; if needed, you can call
+# `calc_ibd_cov()` to update _cov_df.
+ibd2._cov_df
+
+# IBD peaks and annotations. Note this is not updated by `remove_peaks()` so it
+# still reflects peaks before peak removal)
+ibd2._peaks_df
+
 # run infomap on IBD object without peak removal
 mat = ibd.make_ibd_matrix()
+
+# run infomap on IBD object WITH peaks not removed
 member_df = ibd.call_infomap_get_member_df(
     mat, meta, trials=ntrials, transform=transform
 )
@@ -248,6 +295,10 @@ member_df2.Rank.value_counts().iloc[:6]
 # 4     13
 # 5      9
 # Name: Rank, dtype: int64
+
+# NOTE about Infomap result dataframe
+# column "Membership" contains the inferred labels (unsorted version)
+# column "Rank" contains the sorted version of inferred labels
 
 ```
 
