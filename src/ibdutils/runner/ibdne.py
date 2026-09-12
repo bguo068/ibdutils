@@ -84,7 +84,7 @@ class IbdNeRunner:
 
         cmd = f"""
             #! /usr/bin/env bash
-            zcat {self.input_ibd_fn} \\
+            gzip -dc {self.input_ibd_fn} \\
                     | java -Xmx{mem_gb}G -jar {self.ibdne_jar_fn} \\
                     map={self.input_map_fn} \\
                     out={output_prefix} \\
